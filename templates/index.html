@@ -10,6 +10,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
     <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js'></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
 
 <body>
@@ -131,9 +133,27 @@
                         <button type="button" id="view-btn-table" class="view-btn active" title="Tabela (1)"><i class="fas fa-table"></i></button>
                         <button type="button" id="view-btn-kanban" class="view-btn" title="Kanban (2)"><i class="fas fa-th-large"></i></button>
                         <button type="button" id="view-btn-calendar" class="view-btn" title="Kalendarz (3)"><i class="fas fa-calendar-alt"></i></button>
+                        <button type="button" id="view-btn-map" class="view-btn" title="Mapa (4)"><i class="fas fa-map-marked-alt"></i></button>
+                    </div>
+
+                    <!-- Dzwonek Powiadomień -->
+                    <div class="notification-wrapper" style="position: relative;">
+                        <button type="button" id="notification-bell" class="button-secondary" title="Powiadomienia" style="position: relative;">
+                            <i class="fas fa-bell"></i>
+                            <span id="notification-badge" style="position: absolute; top: -5px; right: -5px; background: #ef4444; color: white; border-radius: 50%; padding: 2px 6px; font-size: 0.7rem; font-weight: bold; display: none;">0</span>
+                        </button>
+                        <div id="notification-dropdown" class="hidden" style="position: absolute; right: 0; top: 40px; width: 300px; background: var(--bg-card, #ffffff); border: 1px solid var(--border-color); border-radius: 8px; box-shadow: var(--card-shadow); z-index: 100; padding: 12px;">
+                            <h4 style="margin: 0 0 8px 0; font-size: 0.9rem;"><i class="fas fa-bell"></i> Przypomnienia</h4>
+                            <div id="notification-list" style="max-height: 200px; overflow-y: auto; font-size: 0.85rem;">
+                                Brak nowych przypomnień.
+                            </div>
+                        </div>
                     </div>
 
                     <div style="display: flex; gap: 8px;">
+                        <button type="button" id="toggle-dark-mode" class="button-secondary" title="Przełącz tryb ciemny/jasny">
+                            <i class="fas fa-moon"></i>
+                        </button>
                         <a href="{{ url_for('api.export_csv') }}" id="export-btn" class="button-secondary" title="Eksportuj do CSV">
                             <i class="fas fa-file-download"></i> CSV
                         </a>
@@ -179,6 +199,10 @@
             </div>
         </div>
 
+        <div id="map-view" class="contacts-container hidden" style="height: 500px; border-radius: 10px; overflow: hidden; margin-top: 16px;">
+            <div id="leaflet-map" style="width: 100%; height: 100%;"></div>
+        </div>
+
         <div id="table-view" class="contacts-container">
             <div class="table-wrapper">
                 <table>
@@ -196,6 +220,7 @@
                             <th class="col-notes"><a href="#" data-sort="notes">Uwagi</a></th>
                             <th class="col-reminder_date"><a href="#" data-sort="reminder_date">Przypomnienie</a></th>
                             <th class="col-last_note"><a href="#" data-sort="last_note_date">Notatka</a></th>
+                            <th class="col-score">Score</th>
                             <th class="col-actions">Akcje</th>
                         </tr>
                     </thead>
@@ -285,6 +310,29 @@
                 <button type="submit" class="button-secondary">Importuj</button>
             </form>
         </div>
+    </div>
+</div>
+
+<!-- Modal Powodu Utraty -->
+<div id="lost-reason-modal" class="modal-overlay hidden">
+    <div class="modal-content" style="max-width: 450px;">
+        <button id="close-lost-reason-modal" class="modal-close-btn">&times;</button>
+        <h2><i class="fas fa-exclamation-triangle"></i> Powód Utraty Transakcji</h2>
+        <form id="lost-reason-form" style="display: flex; flex-direction: column; gap: 12px; margin-top: 16px;">
+            <input type="hidden" id="lost-reason-contact-id">
+            <label for="lost_reason_select">Wybierz główny powód:</label>
+            <select id="lost_reason_select" required style="padding: 8px; border-radius: 6px; border: 1px solid var(--border-color);">
+                <option value="Cena zbyt wysoka">Cena zbyt wysoka</option>
+                <option value="Wybór konkurencji">Wybór konkurencji</option>
+                <option value="Brak kontaktu / Rezygnacja">Brak kontaktu / Rezygnacja</option>
+                <option value="Brak budżetu">Brak budżetu</option>
+                <option value="Niedopasowana oferta">Niedopasowana oferta</option>
+                <option value="Inne">Inne</option>
+            </select>
+            <button type="submit" class="button-danger full-width">
+                Potwierdź zmianę statusu
+            </button>
+        </form>
     </div>
 </div>
 

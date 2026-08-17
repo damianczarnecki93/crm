@@ -25,13 +25,15 @@ def add_contact():
     
     with get_db_conn() as conn:
         cursor = conn.cursor()
+        # Automatyczne ustawienie przypomnienia na +7 dni od utworzenia
+        reminder_7d = today_date + timedelta(days=7)
         cursor.execute(
-            '''INSERT INTO contacts (name, street, city, voivodeship, phone, email, nip, www, notes, last_contact_date, status) 
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-            (*form_values.values(), today_date, 'nowy')
+            '''INSERT INTO contacts (name, street, city, voivodeship, phone, email, nip, www, notes, last_contact_date, status, reminder_date)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+            (*form_values.values(), today_date, 'nowy', reminder_7d)
         )
         contact_id = cursor.lastrowid
-        cursor.execute('INSERT INTO contact_history (contact_id, change_description) VALUES (?, ?)', (contact_id, 'Kontakt utworzony.'))
+        cursor.execute('INSERT INTO contact_history (contact_id, change_description) VALUES (?, ?)', (contact_id, 'Kontakt utworzony. Automatycznie ustawiono przypomnienie na +7 dni.'))
         conn.commit()
         
     msg = f'Pomyślnie dodano kontakt: {form_values["name"]}'
@@ -106,7 +108,9 @@ def import_csv():
 
 @contacts_bp.route('/contact/<int:contact_id>/update_status', methods=['POST'])
 def update_status(contact_id):
-    new_status = request.json.get('status') if request.is_json else request.form.get('status')
+    data = request.json if request.is_json else request.form
+    new_status = data.get('status')
+    lost_reason = data.get('lost_reason', '').strip() if data else ''
     allowed_statuses = ['nowy', 'aktywny', 'kontakt', 'utracony', 'lojalny', 'nieaktywny']
     
     if not new_status or new_status not in allowed_statuses:
@@ -115,7 +119,10 @@ def update_status(contact_id):
     try:
         with get_db_conn() as conn:
             cursor = conn.cursor()
-            cursor.execute('UPDATE contacts SET status = ? WHERE id = ?', (new_status, contact_id))
+            if new_status == 'utracony' and lost_reason:
+                cursor.execute('UPDATE contacts SET status = ?, lost_reason = ? WHERE id = ?', (new_status, lost_reason, contact_id))
+            else:
+                cursor.execute('UPDATE contacts SET status = ? WHERE id = ?', (new_status, contact_id))
             if cursor.rowcount == 0:
                 return jsonify({'success': False, 'message': 'Kontakt nie istnieje'}), 404
             
@@ -175,11 +182,12 @@ def contact_detail(contact_id):
     with get_db_conn() as conn:
         contact = conn.execute('SELECT * FROM contacts WHERE id = ?', (contact_id,)).fetchone()
         history = conn.execute('SELECT * FROM contact_history WHERE contact_id = ? ORDER BY change_date DESC', (contact_id,)).fetchall()
+        sales = conn.execute('SELECT * FROM sales_history WHERE contact_id = ? ORDER BY sale_date DESC', (contact_id,)).fetchall()
     
     if contact is None: 
         flash('Kontakt nie istnieje.', 'warning')
         return redirect(url_for('main.index'))
-    return render_template('contact_detail.html', contact=contact, history=history)
+    return render_template('contact_detail.html', contact=contact, history=history, sales=sales)
 
 
 @contacts_bp.route('/contact/<int:contact_id>/edit')

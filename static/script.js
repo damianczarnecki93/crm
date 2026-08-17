@@ -1,4 +1,20 @@
 document.addEventListener('DOMContentLoaded', function() {
+    // --- Dark Mode ---
+    const darkModeBtn = document.getElementById('toggle-dark-mode');
+    if (localStorage.getItem('crm_dark_theme') === 'enabled') {
+        document.body.classList.add('dark-theme');
+    }
+    if (darkModeBtn) {
+        darkModeBtn.addEventListener('click', () => {
+            document.body.classList.toggle('dark-theme');
+            if (document.body.classList.contains('dark-theme')) {
+                localStorage.setItem('crm_dark_theme', 'enabled');
+            } else {
+                localStorage.setItem('crm_dark_theme', 'disabled');
+            }
+        });
+    }
+
     // --- Przejęcie kontroli nad przywracaniem przewijania ---
     if ('scrollRestoration' in history) {
         history.scrollRestoration = 'manual';
@@ -52,6 +68,52 @@ document.addEventListener('DOMContentLoaded', function() {
     if (modal) {
         modal.addEventListener('click', (e) => {
             if (e.target === modal) { modal.classList.add('hidden'); }
+        });
+    }
+
+    // --- Obsługa modala powodu utraty ---
+    const lostReasonModal = document.getElementById('lost-reason-modal');
+    const closeLostReasonBtn = document.getElementById('close-lost-reason-modal');
+    const lostReasonForm = document.getElementById('lost-reason-form');
+
+    if (closeLostReasonBtn && lostReasonModal) {
+        closeLostReasonBtn.addEventListener('click', () => lostReasonModal.classList.add('hidden'));
+        lostReasonModal.addEventListener('click', (e) => {
+            if (e.target === lostReasonModal) lostReasonModal.classList.add('hidden');
+        });
+    }
+
+    if (lostReasonForm) {
+        lostReasonForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const contactId = document.getElementById('lost-reason-contact-id').value;
+            const reason = document.getElementById('lost_reason_select').value;
+
+            showSpinner();
+            fetch(`/contact/${contactId}/update_status`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                },
+                body: JSON.stringify({ status: 'utracony', lost_reason: reason })
+            })
+            .then(res => res.json())
+            .then(data => {
+                hideSpinner();
+                if (data.success) {
+                    showToast('Zmieniono status na Utracony z powodem: ' + reason, 'success');
+                    lostReasonModal.classList.add('hidden');
+                    fetchFilteredContacts();
+                    refreshStats();
+                } else {
+                    showToast(data.message || 'Błąd zmiany statusu.', 'danger');
+                }
+            })
+            .catch(() => {
+                hideSpinner();
+                showToast('Błąd komunikacji z serwerem.', 'danger');
+            });
         });
     }
 
@@ -198,6 +260,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 const currentIndex = statuses.indexOf(currentStatus);
                 const nextIndex = (currentIndex + 1) % statuses.length;
                 const newStatus = statuses[nextIndex];
+
+                if (newStatus === 'utracony') {
+                    document.getElementById('lost-reason-contact-id').value = contactId;
+                    document.getElementById('lost-reason-modal')?.classList.remove('hidden');
+                    return;
+                }
+
                 fetch(`/contact/${contactId}/update_status`, {
                     method: 'POST',
                     headers: { 
@@ -270,6 +339,11 @@ function renderTable(contacts) {
             <td class="col-reminder_date">${contact.reminder_date || 'Brak'}</td>
             <td class="col-last_note last-note" title="${contact.last_note ? `${lastNoteDate}: ${contact.last_note}` : ''}">
                 ${contact.last_note ? `<span class="note-date">${lastNoteDate}</span>${contact.last_note}` : 'Brak'}
+            </td>
+            <td class="col-score">
+                <span style="font-weight: bold; color: ${contact.lead_score >= 50 ? '#16a34a' : '#d97706'};">
+                    ${contact.lead_score || 0} ${contact.lead_score >= 70 ? '🔥' : ''}
+                </span>
             </td>
             <td class="col-actions">
                 <button type="button" class="btn-quick-note button-secondary" title="Dodaj notatkę" style="padding: 2px 8px; font-size: 0.8rem;">
@@ -364,31 +438,136 @@ function renderCalendar() {
     calendar.render();
 }
 
+    // --- Mapa Leaflet i Geolokalizacja ---
+    let leafletMap = null;
+    let mapMarkers = [];
+
+    const cityCoords = {
+        'warszawa': [52.2297, 21.0122], 'kraków': [50.0647, 19.9450], 'krakow': [50.0647, 19.9450],
+        'wrocław': [51.1100, 17.0333], 'wroclaw': [51.1100, 17.0333], 'poznań': [52.4064, 16.9252],
+        'poznan': [52.4064, 16.9252], 'gdańsk': [54.3520, 18.6466], 'gdansk': [54.3520, 18.6466],
+        'szczecin': [53.4285, 14.5528], 'bydgoszcz': [53.1235, 18.0084], 'lublin': [51.2465, 22.5684],
+        'katowice': [50.2649, 19.0238], 'białystok': [53.1325, 23.1688], 'bialystok': [53.1325, 23.1688],
+        'gdynia': [54.5189, 18.5305], 'częstochowa': [50.8118, 19.1203], 'radom': [51.4027, 21.1471]
+    };
+
+    function renderMap(contacts) {
+        const mapView = document.getElementById('map-view');
+        if (!mapView || typeof L === 'undefined') return;
+
+        if (!leafletMap) {
+            leafletMap = L.map('leaflet-map').setView([52.0693, 19.4803], 6);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(leafletMap);
+        }
+
+        mapMarkers.forEach(m => leafletMap.removeLayer(m));
+        mapMarkers = [];
+
+        contacts.forEach(c => {
+            const cityKey = (c.city || '').toLowerCase().trim();
+            if (cityKey && cityCoords[cityKey]) {
+                const coords = cityCoords[cityKey];
+                // Losowe przesunięcie jeśli w tym samym mieście
+                const lat = coords[0] + (Math.random() - 0.5) * 0.04;
+                const lng = coords[1] + (Math.random() - 0.5) * 0.04;
+                const marker = L.marker([lat, lng]).addTo(leafletMap);
+                marker.bindPopup(`<b><a href="/contact/${c.id}">${c.name}</a></b><br>${c.city || ''} ${c.street || ''}<br>Status: ${c.status}`);
+                mapMarkers.push(marker);
+            }
+        });
+
+        setTimeout(() => leafletMap.invalidateSize(), 300);
+    }
+
+    // --- Powiadomienia ---
+    function checkNotifications() {
+        fetch('/api/reminders')
+            .then(res => res.json())
+            .then(reminders => {
+                const badge = document.getElementById('notification-badge');
+                const list = document.getElementById('notification-list');
+                const today = new Date().toISOString().split('T')[0];
+
+                const activeReminders = reminders.filter(r => r.start <= today);
+                if (badge) {
+                    if (activeReminders.length > 0) {
+                        badge.innerText = activeReminders.length;
+                        badge.style.display = 'inline-block';
+                    } else {
+                        badge.style.display = 'none';
+                    }
+                }
+
+                if (list) {
+                    if (activeReminders.length === 0) {
+                        list.innerHTML = 'Brak oczekujących przypomnień.';
+                    } else {
+                        list.innerHTML = activeReminders.map(r => `
+                            <div style="padding: 6px 0; border-bottom: 1px solid var(--border-color);">
+                                <a href="${r.url}" style="font-weight: bold; color: var(--primary-color);">${r.title}</a>
+                                <div style="font-size: 0.75rem; color: var(--text-muted);">${r.start}</div>
+                            </div>
+                        `).join('');
+                    }
+                }
+
+                // Powiadomienia przeglądarkowe
+                if (activeReminders.length > 0 && Notification.permission === 'granted') {
+                    new Notification('CRM Przypomnienia', {
+                        body: `Masz ${activeReminders.length} oczekujących przypomnień na dziś!`,
+                        icon: '/favicon.ico'
+                    });
+                }
+            });
+    }
+
+    if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+        Notification.requestPermission();
+    }
+
+    const bell = document.getElementById('notification-bell');
+    const dropdown = document.getElementById('notification-dropdown');
+    if (bell && dropdown) {
+        bell.addEventListener('click', (e) => {
+            e.stopPropagation();
+            dropdown.classList.toggle('hidden');
+        });
+        document.addEventListener('click', () => dropdown.classList.add('hidden'));
+    }
+
+    checkNotifications();
+
     // --- Logika dynamicznego odświeżania i przełączania widoków ---
     const tableView = document.getElementById('table-view');
     const kanbanView = document.getElementById('kanban-view');
     const calendarView = document.getElementById('calendar-view');
+    const mapView = document.getElementById('map-view');
     const tableBtn = document.getElementById('view-btn-table');
     const kanbanBtn = document.getElementById('view-btn-kanban');
     const calendarBtn = document.getElementById('view-btn-calendar');
+    const mapBtn = document.getElementById('view-btn-map');
 
     function switchView(view) {
-        tableView.classList.add('hidden');
-        kanbanView.classList.add('hidden');
-        calendarView.classList.add('hidden');
-        [tableBtn, kanbanBtn, calendarBtn].forEach(b => b.classList.remove('active'));
+        [tableView, kanbanView, calendarView, mapView].forEach(v => v?.classList.add('hidden'));
+        [tableBtn, kanbanBtn, calendarBtn, mapBtn].forEach(b => b?.classList.remove('active'));
         localStorage.setItem('crm_view', view);
         if (view === 'kanban') {
-            kanbanView.classList.remove('hidden');
-            kanbanBtn.classList.add('active');
+            kanbanView?.classList.remove('hidden');
+            kanbanBtn?.classList.add('active');
             fetchFilteredContacts();
         } else if (view === 'calendar') {
-            calendarView.classList.remove('hidden');
-            calendarBtn.classList.add('active');
+            calendarView?.classList.remove('hidden');
+            calendarBtn?.classList.add('active');
             renderCalendar();
+        } else if (view === 'map') {
+            mapView?.classList.remove('hidden');
+            mapBtn?.classList.add('active');
+            fetchFilteredContacts();
         } else {
-            tableView.classList.remove('hidden');
-            tableBtn.classList.add('active');
+            tableView?.classList.remove('hidden');
+            tableBtn?.classList.add('active');
             fetchFilteredContacts();
         }
     }
@@ -396,6 +575,7 @@ function renderCalendar() {
     function updateView(contacts) {
         const currentView = localStorage.getItem('crm_view') || 'table';
         if (currentView === 'kanban') renderKanbanBoard(contacts);
+        else if (currentView === 'map') renderMap(contacts);
         else renderTable(contacts);
     }
 
@@ -561,6 +741,7 @@ function renderCalendar() {
         tableBtn.addEventListener('click', () => switchView('table'));
         kanbanBtn.addEventListener('click', () => switchView('kanban'));
         calendarBtn.addEventListener('click', () => switchView('calendar'));
+        if (mapBtn) mapBtn.addEventListener('click', () => switchView('map'));
         switchView(savedView);
     } else {
         fetchFilteredContacts();

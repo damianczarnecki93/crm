@@ -11,9 +11,33 @@ def get_db_conn():
     conn.execute("PRAGMA foreign_keys = ON;")
     return conn
 
+def migrate_db():
+    """Migruje istniejącą bazę danych dodając brakujące kolumny i tabele."""
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        # Sprawdź czy kolumna lost_reason istnieje w table contacts
+        cursor.execute("PRAGMA table_info(contacts);")
+        columns = [col['name'] for col in cursor.fetchall()]
+        if 'lost_reason' not in columns:
+            cursor.execute("ALTER TABLE contacts ADD COLUMN lost_reason TEXT;")
+
+        # Tworzenie tabeli sales_history
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS sales_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                contact_id INTEGER NOT NULL,
+                product_name TEXT NOT NULL,
+                amount REAL NOT NULL,
+                sale_date DATE NOT NULL,
+                notes TEXT,
+                FOREIGN KEY (contact_id) REFERENCES contacts (id) ON DELETE CASCADE
+            )''')
+        conn.commit()
+
 def init_db():
     with get_db_conn() as conn:
         cursor = conn.cursor()
+        cursor.execute('DROP TABLE IF EXISTS sales_history;')
         cursor.execute('DROP TABLE IF EXISTS contact_history;')
         cursor.execute('DROP TABLE IF EXISTS contacts;')
         
@@ -31,7 +55,8 @@ def init_db():
                 notes TEXT,
                 reminder_date DATE,
                 last_contact_date DATE,
-                status TEXT NOT NULL DEFAULT 'nowy'
+                status TEXT NOT NULL DEFAULT 'nowy',
+                lost_reason TEXT
             )''')
         
         cursor.execute('''
@@ -42,7 +67,41 @@ def init_db():
                 change_description TEXT NOT NULL,
                 FOREIGN KEY (contact_id) REFERENCES contacts (id) ON DELETE CASCADE
             )''')
+
+        cursor.execute('''
+            CREATE TABLE sales_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                contact_id INTEGER NOT NULL,
+                product_name TEXT NOT NULL,
+                amount REAL NOT NULL,
+                sale_date DATE NOT NULL,
+                notes TEXT,
+                FOREIGN KEY (contact_id) REFERENCES contacts (id) ON DELETE CASCADE
+            )''')
         conn.commit()
+
+def calculate_lead_score(contact_row, history_count=0):
+    """Oblicza punktację leada (Lead Score 0-100) na podstawie kompletności i aktywności."""
+    score = 0
+    # Kompletność danych (max 40)
+    if contact_row.get('phone'): score += 10
+    if contact_row.get('email'): score += 10
+    if contact_row.get('nip'): score += 10
+    if contact_row.get('street') or contact_row.get('city'): score += 10
+
+    # Aktywność w historii (max 30)
+    score += min(history_count * 10, 30)
+
+    # Aktywne przypomnienie (max 15)
+    if contact_row.get('reminder_date'): score += 15
+
+    # Status klienta (max 15)
+    status = contact_row.get('status')
+    if status == 'lojalny': score += 15
+    elif status == 'aktywny': score += 10
+    elif status == 'kontakt': score += 5
+
+    return min(score, 100)
 
 def get_filtered_contacts_from_db(search_query, filter_city, filter_status, sort_by='name', sort_order='asc', limit=None, offset=None):
     today_iso = datetime.now(timezone.utc).date().isoformat()
@@ -59,7 +118,7 @@ def get_filtered_contacts_from_db(search_query, filter_city, filter_status, sort
     sql_order = 'DESC' if sort_order.lower() == 'desc' else 'ASC'
 
     base_query = f"""
-    SELECT c.*, h.last_note, h.last_note_date,
+    SELECT c.*, h.last_note, h.last_note_date, COALESCE(hc.note_count, 0) as note_count,
            CASE WHEN c.reminder_date IS NOT NULL AND c.reminder_date < ? THEN 1 ELSE 0 END as is_overdue
     FROM contacts c
     LEFT JOIN (
@@ -67,6 +126,9 @@ def get_filtered_contacts_from_db(search_query, filter_city, filter_status, sort
                ROW_NUMBER() OVER(PARTITION BY contact_id ORDER BY change_date DESC) as rn
         FROM contact_history
     ) h ON c.id = h.contact_id AND h.rn = 1
+    LEFT JOIN (
+        SELECT contact_id, COUNT(*) as note_count FROM contact_history GROUP BY contact_id
+    ) hc ON c.id = hc.contact_id
     """
     
     conditions = []
@@ -114,7 +176,14 @@ def get_filtered_contacts_from_db(search_query, filter_city, filter_status, sort
     with get_db_conn() as conn:
         contacts = conn.execute(base_query, params).fetchall()
         
-    return contacts
+    # Zamień obiekty Row na słowniki z wyliczonym lead_score
+    result = []
+    for c in contacts:
+        cdict = dict(c)
+        cdict['lead_score'] = calculate_lead_score(cdict, cdict.get('note_count', 0))
+        result.append(cdict)
+
+    return result
 
 def validate_contact_form(form):
     errors = []

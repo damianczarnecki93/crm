@@ -22,7 +22,14 @@ def add_note(contact_id):
         cursor = conn.cursor()
         cursor.execute('INSERT INTO contact_history (contact_id, change_description) VALUES (?, ?)', (contact_id, note_text))
         note_id = cursor.lastrowid
-        cursor.execute('UPDATE contacts SET last_contact_date = ? WHERE id = ?', (today_date, contact_id))
+
+        # Automatyzacja: jeśli kontakt jest 'nowy', zmień status na 'kontakt' po dodaniu notatki
+        curr_status = cursor.execute('SELECT status FROM contacts WHERE id = ?', (contact_id,)).fetchone()
+        if curr_status and curr_status['status'] == 'nowy':
+            cursor.execute('UPDATE contacts SET status = "kontakt", last_contact_date = ? WHERE id = ?', (today_date, contact_id))
+        else:
+            cursor.execute('UPDATE contacts SET last_contact_date = ? WHERE id = ?', (today_date, contact_id))
+
         note = cursor.execute('SELECT * FROM contact_history WHERE id = ?', (note_id,)).fetchone()
         conn.commit()
 

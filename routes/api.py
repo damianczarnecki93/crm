@@ -21,7 +21,17 @@ def get_stats_dict():
                 COALESCE(SUM(CASE WHEN status = 'nieaktywny' THEN 1 ELSE 0 END), 0) as status_nieaktywny
             FROM contacts
         """).fetchone()
-    return dict(stats) if stats else {}
+
+        lost_reasons_rows = conn.execute("""
+            SELECT COALESCE(NULLIF(lost_reason, ''), 'Nieokreślony') as reason, COUNT(*) as count
+            FROM contacts WHERE status = 'utracony'
+            GROUP BY reason
+        """).fetchall()
+        lost_reasons = {r['reason']: r['count'] for r in lost_reasons_rows}
+
+    res = dict(stats) if stats else {}
+    res['lost_reasons'] = lost_reasons
+    return res
 
 @api_bp.route('/api/stats')
 def api_stats():
@@ -53,6 +63,55 @@ def api_reminders():
             }
         })
     return jsonify(events)
+
+
+@api_bp.route('/contact/<int:contact_id>/add_sale', methods=['POST'])
+def add_sale(contact_id):
+    is_json_req = request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest' or 'application/json' in request.headers.get('Accept', '')
+    data = request.json if request.is_json else request.form
+    product_name = data.get('product_name', '').strip() if data else ''
+    amount_str = str(data.get('amount', '')).strip() if data else ''
+    sale_date = data.get('sale_date', '').strip() if data else ''
+    notes = data.get('notes', '').strip() if data else ''
+
+    if not product_name or not amount_str or not sale_date:
+        msg = 'Wypełnij nazwę produktu, kwotę i datę.'
+        if is_json_req:
+            return jsonify({'success': False, 'message': msg}), 400
+        flash(msg, 'warning')
+        return redirect(url_for('contacts.contact_detail', contact_id=contact_id))
+
+    try:
+        amount = float(amount_str)
+    except ValueError:
+        msg = 'Niepoprawny format kwoty.'
+        if is_json_req:
+            return jsonify({'success': False, 'message': msg}), 400
+        flash(msg, 'warning')
+        return redirect(url_for('contacts.contact_detail', contact_id=contact_id))
+
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            'INSERT INTO sales_history (contact_id, product_name, amount, sale_date, notes) VALUES (?, ?, ?, ?, ?)',
+            (contact_id, product_name, amount, sale_date, notes)
+        )
+        sale_id = cursor.lastrowid
+        conn.commit()
+
+    msg = 'Dodano wpis do historii sprzedaży.'
+    if is_json_req:
+        return jsonify({'success': True, 'message': msg, 'sale': {'id': sale_id, 'product_name': product_name, 'amount': amount, 'sale_date': sale_date, 'notes': notes}})
+
+    flash(msg, 'success')
+    return redirect(url_for('contacts.contact_detail', contact_id=contact_id))
+
+
+@api_bp.route('/contact/<int:contact_id>/sales')
+def get_sales(contact_id):
+    with get_db_conn() as conn:
+        sales = conn.execute('SELECT * FROM sales_history WHERE contact_id = ? ORDER BY sale_date DESC', (contact_id,)).fetchall()
+    return jsonify([dict(s) for s in sales])
 
 
 @api_bp.route('/export_csv')
