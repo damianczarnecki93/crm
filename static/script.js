@@ -17,6 +17,31 @@ document.addEventListener('DOMContentLoaded', function() {
     let searchTimeout;
     let calendar = null;
 
+    // --- Refresh Stats Function ---
+    function refreshStats() {
+        fetch('/api/stats')
+            .then(res => res.json())
+            .then(stats => {
+                const map = {
+                    total_count: '.stat-card:nth-child(1) .stat-value',
+                    reminders_today: '.stat-card:nth-child(2) .stat-value',
+                    reminders_overdue: '.stat-card:nth-child(3) .stat-value',
+                    status_nowy: '.stat-card:nth-child(4) .stat-value',
+                    status_aktywny: '.stat-card:nth-child(5) .stat-value',
+                    status_kontakt: '.stat-card:nth-child(6) .stat-value',
+                    status_lojalny: '.stat-card:nth-child(7) .stat-value',
+                    status_utracony: '.stat-card:nth-child(8) .stat-value',
+                    status_nieaktywny: '.stat-card:nth-child(9) .stat-value'
+                };
+                for (const key in map) {
+                    const el = document.querySelector(map[key]);
+                    if (el && stats[key] !== undefined) {
+                        el.innerText = stats[key];
+                    }
+                }
+            }).catch(err => console.error(err));
+    }
+
     // --- Obsługa okna dialogowego (modal) ---
     if (fab && modal) {
         fab.addEventListener('click', () => { modal.classList.remove('hidden'); });
@@ -27,6 +52,128 @@ document.addEventListener('DOMContentLoaded', function() {
     if (modal) {
         modal.addEventListener('click', (e) => {
             if (e.target === modal) { modal.classList.add('hidden'); }
+        });
+    }
+
+    // --- Obsługa modala szybkiej notatki ---
+    const quickNoteModal = document.getElementById('quick-note-modal');
+    const closeQuickNoteBtn = document.getElementById('close-quick-note-modal');
+    const quickNoteForm = document.getElementById('quick-note-form');
+
+    if (closeQuickNoteBtn && quickNoteModal) {
+        closeQuickNoteBtn.addEventListener('click', () => quickNoteModal.classList.add('hidden'));
+        quickNoteModal.addEventListener('click', (e) => {
+            if (e.target === quickNoteModal) quickNoteModal.classList.add('hidden');
+        });
+    }
+
+    if (quickNoteForm) {
+        quickNoteForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const contactId = document.getElementById('quick-note-contact-id').value;
+            const noteText = document.getElementById('quick-note-text').value.trim();
+            if (!noteText) return;
+
+            showSpinner();
+            fetch(`/contact/${contactId}/add_note`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                },
+                body: JSON.stringify({ note_text: noteText })
+            })
+            .then(res => res.json())
+            .then(data => {
+                hideSpinner();
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    quickNoteModal.classList.add('hidden');
+                    document.getElementById('quick-note-text').value = '';
+                    fetchFilteredContacts();
+                    refreshStats();
+                } else {
+                    showToast(data.message || 'Błąd zapisywania notatki.', 'danger');
+                }
+            })
+            .catch(() => {
+                hideSpinner();
+                showToast('Błąd komunikacji z serwerem.', 'danger');
+            });
+        });
+    }
+
+    // --- Obsługa AJAX formularza dodawania kontaktu ---
+    const addContactForm = document.querySelector('#add-modal form.form-grid');
+    if (addContactForm) {
+        addContactForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(addContactForm);
+            const dataObj = {};
+            formData.forEach((value, key) => { dataObj[key] = value; });
+
+            showSpinner();
+            fetch(addContactForm.action, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                },
+                body: JSON.stringify(dataObj)
+            })
+            .then(res => res.json())
+            .then(data => {
+                hideSpinner();
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    modal.classList.add('hidden');
+                    addContactForm.reset();
+                    fetchFilteredContacts();
+                    refreshStats();
+                } else {
+                    showToast(data.message || 'Wystąpił błąd formularza.', 'danger');
+                }
+            })
+            .catch(() => {
+                hideSpinner();
+                showToast('Błąd serwera podczas dodawania kontaktu.', 'danger');
+            });
+        });
+    }
+
+    // --- Obsługa AJAX importu CSV ---
+    const importCsvForm = document.querySelector('#add-modal form[action*="import_csv"]');
+    if (importCsvForm) {
+        importCsvForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(importCsvForm);
+
+            showSpinner();
+            fetch(importCsvForm.action, {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRFToken': getCsrfToken()
+                },
+                body: formData
+            })
+            .then(res => res.json())
+            .then(data => {
+                hideSpinner();
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    modal.classList.add('hidden');
+                    importCsvForm.reset();
+                    fetchFilteredContacts();
+                    refreshStats();
+                } else {
+                    showToast(data.message || 'Błąd podczas importu CSV.', 'danger');
+                }
+            })
+            .catch(() => {
+                hideSpinner();
+                showToast('Błąd wysyłania pliku CSV.', 'danger');
+            });
         });
     }
 
@@ -45,7 +192,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function addEventListenersToRows(rows) {
         rows.forEach(row => {
             row.addEventListener('click', function(event) {
-                if (event.target.tagName === 'A' || event.target.closest('a')) return;
+                if (event.target.tagName === 'A' || event.target.closest('a') || event.target.tagName === 'BUTTON' || event.target.closest('button')) return;
                 const contactId = this.dataset.contactId;
                 let currentStatus = this.dataset.currentStatus;
                 const currentIndex = statuses.indexOf(currentStatus);
@@ -69,6 +216,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             iconSpan.innerHTML = getStatusIconHTML(newStatus);
                             iconSpan.title = `Status: ${newStatus}`;
                         }
+                        refreshStats();
                     }
                 });
             });
@@ -80,9 +228,8 @@ function renderTable(contacts) {
     if (!tableBody) return;
     tableBody.innerHTML = '';
 
-    // POPRAWKA: colspan musi wynosić 12, bo dodaliśmy kolumnę statusu
     if (contacts.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="12">Brak kontaktów pasujących do kryteriów.</td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="13">Brak kontaktów pasujących do kryteriów.</td></tr>';
         return;
     }
 
@@ -96,10 +243,15 @@ function renderTable(contacts) {
         row.className = `status-${contact.status} ${hasReminder ? 'has-reminder' : ''} ${isOverdue ? 'reminder-overdue' : ''}`;
         row.dataset.contactId = contact.id;
         row.dataset.currentStatus = contact.status;
+        row.dataset.name = contact.name || '';
+        row.dataset.phone = contact.phone || '';
+        row.dataset.email = contact.email || '';
+        row.dataset.nip = contact.nip || '';
+        row.dataset.city = contact.city || '';
+        row.dataset.notes = contact.notes || '';
 
         const lastNoteDate = contact.last_note_date ? contact.last_note_date.split(' ')[0] : '';
 
-        // KOLEJNOŚĆ: Status jest teraz pierwszy
         row.innerHTML = `
             <td class="col-status">
                 <span class="status-icon" title="Status: ${contact.status}">${getStatusIconHTML(contact.status)}</span>
@@ -119,7 +271,25 @@ function renderTable(contacts) {
             <td class="col-last_note last-note" title="${contact.last_note ? `${lastNoteDate}: ${contact.last_note}` : ''}">
                 ${contact.last_note ? `<span class="note-date">${lastNoteDate}</span>${contact.last_note}` : 'Brak'}
             </td>
+            <td class="col-actions">
+                <button type="button" class="btn-quick-note button-secondary" title="Dodaj notatkę" style="padding: 2px 8px; font-size: 0.8rem;">
+                    <i class="fas fa-plus"></i>
+                </button>
+            </td>
         `;
+
+        const quickNoteBtn = row.querySelector('.btn-quick-note');
+        if (quickNoteBtn) {
+            quickNoteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                document.getElementById('quick-note-contact-id').value = contact.id;
+                document.getElementById('quick-note-contact-name').innerText = contact.name || '';
+                document.getElementById('quick-note-text').value = '';
+                document.getElementById('quick-note-modal')?.classList.remove('hidden');
+                document.getElementById('quick-note-text')?.focus();
+            });
+        }
+
         tableBody.appendChild(row);
     });
 

@@ -196,6 +196,7 @@
                             <th class="col-notes"><a href="#" data-sort="notes">Uwagi</a></th>
                             <th class="col-reminder_date"><a href="#" data-sort="reminder_date">Przypomnienie</a></th>
                             <th class="col-last_note"><a href="#" data-sort="last_note_date">Notatka</a></th>
+                            <th class="col-actions">Akcje</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -284,6 +285,21 @@
                 <button type="submit" class="button-secondary">Importuj</button>
             </form>
         </div>
+    </div>
+</div>
+
+<!-- Modal Szybkiej Notatki -->
+<div id="quick-note-modal" class="modal-overlay hidden">
+    <div class="modal-content" style="max-width: 500px;">
+        <button id="close-quick-note-modal" class="modal-close-btn">&times;</button>
+        <h2><i class="fas fa-sticky-note"></i> Dodaj notatkę dla: <span id="quick-note-contact-name"></span></h2>
+        <form id="quick-note-form" style="display: flex; flex-direction: column; gap: 12px; margin-top: 16px;">
+            <input type="hidden" id="quick-note-contact-id" name="contact_id">
+            <textarea id="quick-note-text" name="note_text" rows="4" placeholder="Wpisz treść notatki..." required></textarea>
+            <button type="submit" class="button-primary full-width">
+                <i class="fas fa-save"></i> Zapisz notatkę
+            </button>
+        </form>
     </div>
 </div>
 

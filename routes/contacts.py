@@ -9,14 +9,18 @@ contacts_bp = Blueprint('contacts', __name__)
 
 @contacts_bp.route('/add_contact', methods=['POST'])
 def add_contact():
-    errors = validate_contact_form(request.form)
+    is_json_req = request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest' or 'application/json' in request.headers.get('Accept', '')
+    data = request.json if request.is_json else request.form
+    errors = validate_contact_form(data)
     if errors:
+        if is_json_req:
+            return jsonify({'success': False, 'errors': errors, 'message': errors[0]}), 400
         for error in errors:
             flash(error, 'danger')
         return redirect(url_for('main.index'))
 
     form_keys = ['name', 'street', 'city', 'voivodeship', 'phone', 'email', 'nip', 'www', 'notes']
-    form_values = {k: request.form.get(k, '').strip() for k in form_keys}
+    form_values = {k: data.get(k, '').strip() if data.get(k) is not None else '' for k in form_keys}
     today_date = datetime.now(timezone.utc).date()
     
     with get_db_conn() as conn:
@@ -30,24 +34,34 @@ def add_contact():
         cursor.execute('INSERT INTO contact_history (contact_id, change_description) VALUES (?, ?)', (contact_id, 'Kontakt utworzony.'))
         conn.commit()
         
-    flash(f'Pomyślnie dodano kontakt: {form_values["name"]}', 'success')
+    msg = f'Pomyślnie dodano kontakt: {form_values["name"]}'
+    if is_json_req:
+        return jsonify({'success': True, 'message': msg, 'contact_id': contact_id})
+
+    flash(msg, 'success')
     return redirect(url_for('main.index'))
 
 
 @contacts_bp.route('/import_csv', methods=['POST'])
 def import_csv():
+    is_json_req = request.headers.get('X-Requested-With') == 'XMLHttpRequest' or 'application/json' in request.headers.get('Accept', '')
     file = request.files.get('csv_file')
     if not file or not file.filename.endswith('.csv'):
-        flash('Proszę wgrać prawidłowy plik .csv', 'warning')
+        msg = 'Proszę wgrać prawidłowy plik .csv'
+        if is_json_req:
+            return jsonify({'success': False, 'message': msg}), 400
+        flash(msg, 'warning')
         return redirect(url_for('main.index'))
         
-    csv_file = TextIOWrapper(file, encoding='utf-8')
-    csv_reader = csv.reader(csv_file, delimiter=';')
-    
-    try: 
+    try:
+        csv_file = TextIOWrapper(file, encoding='utf-8')
+        csv_reader = csv.reader(csv_file, delimiter=';')
         next(csv_reader, None)
     except Exception: 
-        flash('Bląd podczas odczytu pliku CSV lub plik jest pusty.', 'warning')
+        msg = 'Błąd podczas odczytu pliku CSV lub plik jest pusty.'
+        if is_json_req:
+            return jsonify({'success': False, 'message': msg}), 400
+        flash(msg, 'warning')
         return redirect(url_for('main.index'))
         
     count = 0
@@ -78,9 +92,15 @@ def import_csv():
         conn.commit()
         
     if count > 0: 
-        flash(f'Pomyślnie zaimportowano {count} kontaktów.', 'success')
+        msg = f'Pomyślnie zaimportowano {count} kontaktów.'
+        if is_json_req:
+            return jsonify({'success': True, 'message': msg, 'count': count})
+        flash(msg, 'success')
     else: 
-        flash('Nie zaimportowano żadnych kontaktów. Sprawdź format pliku.', 'warning')
+        msg = 'Nie zaimportowano żadnych kontaktów. Sprawdź format pliku.'
+        if is_json_req:
+            return jsonify({'success': False, 'message': msg}), 400
+        flash(msg, 'warning')
     return redirect(url_for('main.index'))
 
 
@@ -120,14 +140,18 @@ def filter_contacts():
 
 @contacts_bp.route('/contact/<int:contact_id>/update', methods=['POST'])
 def update_contact(contact_id):
-    errors = validate_contact_form(request.form)
+    is_json_req = request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest' or 'application/json' in request.headers.get('Accept', '')
+    data = request.json if request.is_json else request.form
+    errors = validate_contact_form(data)
     if errors:
+        if is_json_req:
+            return jsonify({'success': False, 'errors': errors, 'message': errors[0]}), 400
         for error in errors:
             flash(error, 'danger')
         return redirect(url_for('contacts.edit_contact', contact_id=contact_id))
 
     form_keys = ['name', 'street', 'city', 'voivodeship', 'phone', 'email', 'nip', 'www', 'notes']
-    form_values = [request.form.get(k, '').strip() for k in form_keys]
+    form_values = [data.get(k, '').strip() if data.get(k) is not None else '' for k in form_keys]
     
     with get_db_conn() as conn:
         conn.execute(
@@ -137,7 +161,12 @@ def update_contact(contact_id):
             (*form_values, contact_id)
         )
         conn.commit()
-    flash('Dane kontaktu zostały zaktualizowane.', 'success')
+
+    msg = 'Dane kontaktu zostały zaktualizowane.'
+    if is_json_req:
+        return jsonify({'success': True, 'message': msg})
+
+    flash(msg, 'success')
     return redirect(url_for('contacts.contact_detail', contact_id=contact_id))
 
 
@@ -165,10 +194,16 @@ def edit_contact(contact_id):
 
 @contacts_bp.route('/contact/<int:contact_id>/delete', methods=['POST'])
 def delete_contact(contact_id):
+    is_json_req = request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest' or 'application/json' in request.headers.get('Accept', '')
     with get_db_conn() as conn:
         conn.execute('DELETE FROM contacts WHERE id = ?', (contact_id,))
         conn.commit()
-    flash('Kontakt został trwale usunięty.', 'success')
+
+    msg = 'Kontakt został trwale usunięty.'
+    if is_json_req:
+        return jsonify({'success': True, 'message': msg})
+
+    flash(msg, 'success')
     return redirect(url_for('main.index'))
 
 

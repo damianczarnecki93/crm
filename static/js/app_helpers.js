@@ -92,6 +92,66 @@ async function fetchGusData(source = 'edit') {
     }
 }
 
+function updateReminderUI(reminderDate, contactId) {
+    let reminderSetDiv = document.querySelector('.reminder-set');
+    const contactCard = document.querySelector('.contact-card');
+
+    if (reminderDate) {
+        if (!reminderSetDiv && contactCard) {
+            reminderSetDiv = document.createElement('div');
+            reminderSetDiv.className = 'reminder-set';
+            const hr = contactCard.querySelector('hr');
+            if (hr) hr.after(reminderSetDiv);
+        }
+        if (reminderSetDiv) {
+            reminderSetDiv.innerHTML = `
+                <span><i class="fas fa-clock"></i> Aktywne przypomnienie: <strong>${reminderDate}</strong></span>
+                <form id="clear-reminder-form" style="margin:0;">
+                    <button type="submit" class="button-danger-text" title="Usuń przypomnienie">
+                        <i class="fas fa-times-circle"></i> Usuń
+                    </button>
+                </form>
+            `;
+            const clearForm = reminderSetDiv.querySelector('#clear-reminder-form');
+            if (clearForm) {
+                clearForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    setReminderAsync(contactId, '');
+                });
+            }
+        }
+    } else {
+        if (reminderSetDiv) {
+            reminderSetDiv.remove();
+        }
+    }
+}
+
+async function setReminderAsync(contactId, reminderDateStr) {
+    showSpinner();
+    try {
+        const response = await fetch(`/contact/${contactId}/set_reminder`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken()
+            },
+            body: JSON.stringify({ reminder_date: reminderDateStr })
+        });
+        const data = await response.json();
+        if (data.success) {
+            showToast(data.message, 'success');
+            updateReminderUI(data.reminder_date, contactId);
+        } else {
+            showToast(data.message || 'Wystąpił błąd.', 'danger');
+        }
+    } catch (e) {
+        showToast('Błąd komunikacji z serwerem.', 'danger');
+    } finally {
+        hideSpinner();
+    }
+}
+
 // Async reminder setters
 async function setQuickDaysAsync(contactId, days) {
     showSpinner();
@@ -107,12 +167,7 @@ async function setQuickDaysAsync(contactId, days) {
         const data = await response.json();
         if (data.success) {
             showToast(data.message, 'success');
-            const reminderDisplay = document.querySelector('.reminder-set strong');
-            if (reminderDisplay) {
-                reminderDisplay.innerText = data.reminder_date;
-            } else {
-                setTimeout(() => window.location.reload(), 1000);
-            }
+            updateReminderUI(data.reminder_date, contactId);
         } else {
             showToast(data.message || 'Wystąpił błąd.', 'danger');
         }

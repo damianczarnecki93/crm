@@ -522,7 +522,7 @@
             {% if contact.reminder_date %}
             <div class="reminder-set">
                 <span><i class="fas fa-clock"></i> Aktywne przypomnienie: <strong>{{ contact.reminder_date }}</strong></span>
-                <form action="{{ url_for('contacts.set_reminder', contact_id=contact.id) }}" method="POST" style="margin:0;">
+                <form id="clear-reminder-form" action="{{ url_for('contacts.set_reminder', contact_id=contact.id) }}" method="POST" style="margin:0;">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="reminder_date" value="">
                     <button type="submit" class="button-danger-text" title="Usuń przypomnienie">
@@ -536,7 +536,7 @@
                 <!-- Opcja 1: Konkretna data + szybki wybór -->
                 <div class="reminder-group">
                     <label for="reminder_date">Wybierz datę kalendarzową:</label>
-                    <form action="{{ url_for('contacts.set_reminder', contact_id=contact.id) }}" method="POST" class="input-inline-group">
+                    <form id="date-reminder-form" action="{{ url_for('contacts.set_reminder', contact_id=contact.id) }}" method="POST" class="input-inline-group">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="date" id="reminder_date" name="reminder_date">
                         <button type="submit">Zapisz</button>
@@ -558,7 +558,7 @@
                 <!-- Opcja 2: Dni od ostatniego kontaktu -->
                 <div class="reminder-group">
                     <label for="reminder_days">Dni od ostatniego kontaktu:</label>
-                    <form action="{{ url_for('contacts.set_reminder_days', contact_id=contact.id) }}" method="POST" class="input-inline-group">
+                    <form id="days-reminder-form" action="{{ url_for('contacts.set_reminder_days', contact_id=contact.id) }}" method="POST" class="input-inline-group">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="number" id="reminder_days" name="reminder_days" min="1" placeholder="np. 30">
                         <button type="submit">Ustaw</button>
@@ -590,7 +590,7 @@
                     </div>
                 </div>
 
-                <form action="{{ url_for('history.add_note', contact_id=contact.id) }}" method="POST">
+                <form id="add-note-form" action="{{ url_for('history.add_note', contact_id=contact.id) }}" method="POST">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <textarea name="note_text" rows="3" placeholder="Opisz interakcję..." required style="margin-bottom: 10px;"></textarea>
                     <button type="submit"><i class="fas fa-plus"></i> Dodaj do historii</button>
@@ -619,6 +619,8 @@
 
 <script src="{{ url_for('static', filename='js/app_helpers.js') }}"></script>
 <script>
+const contactId = {{ contact.id }};
+
 function insertTemplate(text) {
     const textarea = document.querySelector('textarea[name="note_text"]');
     if (textarea) {
@@ -626,6 +628,133 @@ function insertTemplate(text) {
         textarea.focus();
     }
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Handling Date Reminder form
+    const dateReminderForm = document.getElementById('date-reminder-form');
+    if (dateReminderForm) {
+        dateReminderForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const dateVal = document.getElementById('reminder_date').value;
+            setReminderAsync(contactId, dateVal);
+        });
+    }
+
+    // Handling Clear Reminder form
+    const clearReminderForm = document.getElementById('clear-reminder-form');
+    if (clearReminderForm) {
+        clearReminderForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            setReminderAsync(contactId, '');
+        });
+    }
+
+    // Handling Days Reminder form
+    const daysReminderForm = document.getElementById('days-reminder-form');
+    if (daysReminderForm) {
+        daysReminderForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const daysVal = document.getElementById('reminder_days').value;
+            if (!daysVal) return;
+            setQuickDaysAsync(contactId, parseInt(daysVal, 10));
+        });
+    }
+
+    // Handling Add Note form
+    const addNoteForm = document.getElementById('add-note-form');
+    if (addNoteForm) {
+        addNoteForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const noteText = addNoteForm.querySelector('textarea[name="note_text"]').value.trim();
+            if (!noteText) return;
+
+            showSpinner();
+            fetch(addNoteForm.action, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                },
+                body: JSON.stringify({ note_text: noteText })
+            })
+            .then(res => res.json())
+            .then(data => {
+                hideSpinner();
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    addNoteForm.reset();
+
+                    const historyLog = document.querySelector('.history-log');
+                    const emptyMsg = historyLog.querySelector('p');
+                    if (emptyMsg && emptyMsg.innerText.includes('Brak historii')) {
+                        emptyMsg.remove();
+                    }
+
+                    const newEntry = document.createElement('div');
+                    newEntry.className = 'history-entry';
+                    newEntry.id = `history-entry-${data.note.id}`;
+                    newEntry.innerHTML = `
+                        <div class="history-content">
+                            <p class="history-date"><i class="far fa-calendar-alt"></i> ${data.note.date_short}</p>
+                            <p class="history-desc">${data.note.change_description}</p>
+                        </div>
+                        <form method="POST" action="/history/${data.note.id}/delete" class="delete-note-form" style="margin:0;">
+                            <input type="hidden" name="csrf_token" value="${getCsrfToken()}">
+                            <button type="submit" class="delete-btn-note" title="Usuń notatkę"><i class="fas fa-trash-alt"></i></button>
+                        </form>
+                    `;
+                    historyLog.prepend(newEntry);
+                    attachDeleteNoteEvent(newEntry.querySelector('.delete-note-form'));
+                } else {
+                    showToast(data.message || 'Wystąpił błąd.', 'danger');
+                }
+            })
+            .catch(() => {
+                hideSpinner();
+                showToast('Błąd komunikacji z serwerem.', 'danger');
+            });
+        });
+    }
+
+    // Handling Delete Note forms
+    function attachDeleteNoteEvent(form) {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            if (!confirm('Czy na pewno usunąć tę notatkę?')) return;
+
+            showSpinner();
+            fetch(form.action, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                }
+            })
+            .then(res => res.json())
+            .then(data => {
+                hideSpinner();
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    const entry = form.closest('.history-entry');
+                    if (entry) entry.remove();
+
+                    const historyLog = document.querySelector('.history-log');
+                    if (historyLog && historyLog.children.length === 0) {
+                        historyLog.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 20px 0;">Brak historii dla tego kontaktu.</p>';
+                    }
+                } else {
+                    showToast(data.message || 'Nie udało się usunąć notatki.', 'danger');
+                }
+            })
+            .catch(() => {
+                hideSpinner();
+                showToast('Błąd komunikacji z serwerem.', 'danger');
+            });
+        });
+    }
+
+    document.querySelectorAll('.history-log form').forEach(attachDeleteNoteEvent);
+});
 
 document.addEventListener('keydown', function(e) {
     const activeElement = document.activeElement;

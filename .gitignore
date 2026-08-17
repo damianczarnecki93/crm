@@ -1,0 +1,6 @@
+
+__pycache__/
+*.pyc
+crm.db
+.user_data/
+/home/jules/verification/

@@ -6,6 +6,27 @@ from db import get_db_conn
 
 api_bp = Blueprint('api', __name__)
 
+def get_stats_dict():
+    with get_db_conn() as conn:
+        stats = conn.execute("""
+            SELECT
+                COUNT(*) as total_count,
+                COALESCE(SUM(CASE WHEN reminder_date = date('now') THEN 1 ELSE 0 END), 0) as reminders_today,
+                COALESCE(SUM(CASE WHEN reminder_date IS NOT NULL AND reminder_date < date('now') THEN 1 ELSE 0 END), 0) as reminders_overdue,
+                COALESCE(SUM(CASE WHEN status = 'nowy' THEN 1 ELSE 0 END), 0) as status_nowy,
+                COALESCE(SUM(CASE WHEN status = 'aktywny' THEN 1 ELSE 0 END), 0) as status_aktywny,
+                COALESCE(SUM(CASE WHEN status = 'kontakt' THEN 1 ELSE 0 END), 0) as status_kontakt,
+                COALESCE(SUM(CASE WHEN status = 'lojalny' THEN 1 ELSE 0 END), 0) as status_lojalny,
+                COALESCE(SUM(CASE WHEN status = 'utracony' THEN 1 ELSE 0 END), 0) as status_utracony,
+                COALESCE(SUM(CASE WHEN status = 'nieaktywny' THEN 1 ELSE 0 END), 0) as status_nieaktywny
+            FROM contacts
+        """).fetchone()
+    return dict(stats) if stats else {}
+
+@api_bp.route('/api/stats')
+def api_stats():
+    return jsonify(get_stats_dict())
+
 @api_bp.route('/api/reminders')
 def api_reminders():
     with get_db_conn() as conn:
