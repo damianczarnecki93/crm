@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>CRM Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/extra.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js'></script>
+</head>
+
+<body>
+<div class="container">
+    <main id="main-content">
+        
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            <div class="flash-messages">
+                {% for category, message in messages %}
+                <div class="alert alert-{{ category }}"><i class="fas fa-info-circle"></i> {{ message }}</div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        {% endwith %}
+
+        <!-- KPI Dashboard Stats -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon primary">
+                    <i class="fas fa-users"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-label">Wszyscy Klienci</span>
+                    <span class="stat-value">{{ stats.total_count if stats else 0 }}</span>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon warning">
+                    <i class="fas fa-bell"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-label">Przypomnienia (Dziś)</span>
+                    <span class="stat-value">{{ stats.reminders_today if stats else 0 }}</span>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon danger">
+                    <i class="fas fa-exclamation-triangle"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-label">Zaległe Przypomnienia</span>
+                    <span class="stat-value">{{ stats.reminders_overdue if stats else 0 }}</span>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon info">
+                    <i class="far fa-circle"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-label">Nowe</span>
+                    <span class="stat-value">{{ stats.status_nowy if stats else 0 }}</span>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon success">
+                    <i class="fas fa-check-circle"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-label">Aktywne</span>
+                    <span class="stat-value">{{ stats.status_aktywny if stats else 0 }}</span>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon info">
+                    <i class="fas fa-phone-alt"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-label">Kontakt</span>
+                    <span class="stat-value">{{ stats.status_kontakt if stats else 0 }}</span>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon star">
+                    <i class="fas fa-star"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-label">Lojalni / Wizyta</span>
+                    <span class="stat-value">{{ stats.status_lojalny if stats else 0 }}</span>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon danger">
+                    <i class="fas fa-ban"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-label">Utracone</span>
+                    <span class="stat-value">{{ stats.status_utracony if stats else 0 }}</span>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon muted">
+                    <i class="fas fa-moon"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-label">Nieaktywne</span>
+                    <span class="stat-value">{{ stats.status_nieaktywny if stats else 0 }}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="filter-bar">
+            <form id="filter-form" method="GET" action="{{ url_for('main.index') }}">
+                <div class="main-filters">
+                    <div class="search-wrapper">
+                        <i class="fas fa-search"></i>
+                        <input type="text" name="q" placeholder="Szukaj nazwy, telefonu, e-maila... (Naciśnij '/' aby szukać)" value="{{ search_query or '' }}">
+                    </div>
+                    
+                    <div id="view-switcher" class="view-switcher">
+                        <button type="button" id="view-btn-table" class="view-btn active" title="Tabela (1)"><i class="fas fa-table"></i></button>
+                        <button type="button" id="view-btn-kanban" class="view-btn" title="Kanban (2)"><i class="fas fa-th-large"></i></button>
+                        <button type="button" id="view-btn-calendar" class="view-btn" title="Kalendarz (3)"><i class="fas fa-calendar-alt"></i></button>
+                    </div>
+
+                    <div style="display: flex; gap: 8px;">
+                        <a href="{{ url_for('api.export_csv') }}" id="export-btn" class="button-secondary" title="Eksportuj do CSV">
+                            <i class="fas fa-file-download"></i> CSV
+                        </a>
+                        <button type="button" id="toggle-advanced-filters" class="button-secondary" title="Filtry zaawansowane">
+                            <i class="fas fa-filter"></i>
+                        </button>
+                        <button type="button" id="toggle-column-selector" class="button-secondary" title="Wybierz kolumny">
+                            <i class="fas fa-columns"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="advanced-filters" class="hidden" style="margin-top: 8px;">
+                    <div class="filter-group">
+                        <label for="filter_city">Miasto:</label>
+                        <input type="text" id="filter_city" name="filter_city" value="{{ filter_city or '' }}" placeholder="np. Warszawa">
+                    </div>
+                    <div class="filter-group">
+                        <label for="filter_status">Status:</label>
+                        <select id="filter_status" name="filter_status">
+                            <option value="">-- Każdy --</option>
+                            <option value="nowy" {% if filter_status == 'nowy' %}selected{% endif %}>Nowy</option>
+                            <option value="aktywny" {% if filter_status == 'aktywny' %}selected{% endif %}>Aktywny</option>
+                            <option value="kontakt" {% if filter_status == 'kontakt' %}selected{% endif %}>Kontakt</option>
+                            <option value="utracony" {% if filter_status == 'utracony' %}selected{% endif %}>Utracony</option>
+                            <option value="lojalny" {% if filter_status == 'lojalny' %}selected{% endif %}>Lojalny</option>
+                            <option value="nieaktywny" {% if filter_status == 'nieaktywny' %}selected{% endif %}>Nieaktywny</option>
+                        </select>
+                    </div>
+                </div>
+            </form>
+            
+            <div id="column-selector" class="hidden">
+                <label><input type="checkbox" name="toggle-cols" value="col-street" checked> Ulica</label>
+                <label><input type="checkbox" name="toggle-cols" value="col-city" checked> Miasto</label>
+                <label><input type="checkbox" name="toggle-cols" value="col-voivodeship" checked> Woj.</label>
+                <label><input type="checkbox" name="toggle-cols" value="col-phone" checked> Telefon</label>
+                <label><input type="checkbox" name="toggle-cols" value="col-email" checked> E-mail</label>
+                <label><input type="checkbox" name="toggle-cols" value="col-nip" checked> NIP</label>
+                <label><input type="checkbox" name="toggle-cols" value="col-www" checked> WWW</label>
+                <label><input type="checkbox" name="toggle-cols" value="col-notes" checked> Uwagi</label>
+                <label><input type="checkbox" name="toggle-cols" value="col-last_note" checked> Ostatnia Notatka</label>
+            </div>
+        </div>
+
+        <div id="table-view" class="contacts-container">
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th class="col-status"><a href="#" data-sort="status">Status</a></th>
+                            <th class="col-name"><a href="#" data-sort="name">Nazwa</a></th>
+                            <th class="col-street"><a href="#" data-sort="street">Ulica</a></th>
+                            <th class="col-city"><a href="#" data-sort="city">Miasto</a></th>
+                            <th class="col-voivodeship"><a href="#" data-sort="voivodeship">Województwo</a></th>
+                            <th class="col-phone"><a href="#" data-sort="phone">Telefon</a></th>
+                            <th class="col-email"><a href="#" data-sort="email">E-mail</a></th>
+                            <th class="col-nip"><a href="#" data-sort="nip">NIP</a></th>
+                            <th class="col-www"><a href="#" data-sort="www">WWW</a></th>
+                            <th class="col-notes"><a href="#" data-sort="notes">Uwagi</a></th>
+                            <th class="col-reminder_date"><a href="#" data-sort="reminder_date">Przypomnienie</a></th>
+                            <th class="col-last_note"><a href="#" data-sort="last_note_date">Notatka</a></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Dane ładowane dynamicznie przez JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="kanban-view" class="kanban-board hidden"></div>
+        <div id="calendar-view" class="calendar-container hidden"></div>
+    </main>
+</div>
+
+<!-- Modal Dodawania / Importu -->
+<div id="add-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+        <button id="close-modal" class="modal-close-btn">&times;</button>
+        <h2><i class="fas fa-plus-circle"></i> Dodaj / Importuj Kontakt</h2>
+        
+        <div class="form-container">
+            <form method="POST" action="{{ url_for('contacts.add_contact') }}" class="form-grid">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="form-group full-width">
+                    <label for="name-modal">Nazwa podmiotu / Imię i Nazwisko *</label>
+                    <input type="text" id="name-modal" name="name" required placeholder="np. Jan Kowalski / Firma Sp. z o.o.">
+                </div>
+
+                <div class="form-group">
+                    <label for="street-modal">Ulica</label>
+                    <input type="text" id="street-modal" name="street" placeholder="np. Marszałkowska 10">
+                </div>
+
+                <div class="form-group">
+                    <label for="city-modal">Miasto</label>
+                    <input type="text" id="city-modal" name="city" placeholder="np. Warszawa">
+                </div>
+
+                <div class="form-group">
+                    <label for="voivodeship-modal">Województwo</label>
+                    <input type="text" id="voivodeship-modal" name="voivodeship" placeholder="np. Mazowieckie">
+                </div>
+
+                <div class="form-group">
+                    <label for="phone-modal">Telefon</label>
+                    <input type="text" id="phone-modal" name="phone" placeholder="+48 123 456 789">
+                </div>
+
+                <div class="form-group">
+                    <label for="email-modal">E-mail</label>
+                    <input type="email" id="email-modal" name="email" placeholder="biuro@firma.pl">
+                </div>
+
+                <div class="form-group">
+                    <label for="nip-modal">NIP</label>
+                    <div style="display: flex; gap: 8px;">
+                        <input type="text" id="nip-modal" name="nip" placeholder="1234567890" style="flex: 1;">
+                        <button type="button" class="button-secondary" onclick="fetchGusData('modal')" style="white-space: nowrap;">GUS</button>
+                    </div>
+                </div>
+
+                <div class="form-group full-width">
+                    <label for="www-modal">Strona WWW</label>
+                    <input type="text" id="www-modal" name="www" placeholder="https://firma.pl">
+                </div>
+
+                <div class="form-group full-width">
+                    <label for="notes-modal">Uwagi</label>
+                    <textarea id="notes-modal" name="notes" rows="2" placeholder="Notatki i opisy wstępne..."></textarea>
+                </div>
+
+                <button type="submit" class="button-primary full-width" style="margin-top: 8px;">
+                    <i class="fas fa-save"></i> Zapisz kontakt
+                </button>
+            </form>
+        </div>
+
+        <div class="import-container">
+            <h3 style="margin-top: 0; font-size: 0.95rem; color: var(--text-main);"><i class="fas fa-file-import"></i> Szybki import z pliku CSV</h3>
+            <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;">
+                Format kolumn: Nazwa, Ulica, Miasto, Woj., Telefon, Email, NIP, WWW, Uwagi, [Notatka]
+            </p>
+            <form action="{{ url_for('contacts.import_csv') }}" method="POST" enctype="multipart/form-data" style="display: flex; gap: 8px; align-items: center;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="file" name="csv_file" accept=".csv" required style="font-size: 0.85rem;">
+                <button type="submit" class="button-secondary">Importuj</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Przycisk Pływający (FAB) -->
+<button id="fab-add" class="fab" title="Dodaj nowy kontakt (N)"><i class="fas fa-plus"></i></button>
+
+<!-- Boczny panel podglądu (Drawer) -->
+<div id="quick-drawer" class="drawer hidden">
+    <div class="drawer-content">
+        <button type="button" class="close-drawer" onclick="closeDrawer()">&times;</button>
+        <h2 id="drawer-name">---</h2>
+        <hr style="border: none; border-top: 1px solid var(--border-color); margin: 16px 0;">
+        
+        <div class="drawer-item">
+            <span class="label"><i class="fas fa-phone"></i> Telefon</span>
+            <span class="value" id="drawer-phone">-</span>
+        </div>
+        <div class="drawer-item">
+            <span class="label"><i class="fas fa-envelope"></i> E-mail</span>
+            <span class="value" id="drawer-email">-</span>
+        </div>
+        <div class="drawer-item">
+            <span class="label"><i class="fas fa-building"></i> NIP</span>
+            <span class="value" id="drawer-nip">-</span>
+        </div>
+        <div class="drawer-item">
+            <span class="label"><i class="fas fa-map-marker-alt"></i> Miasto</span>
+            <span class="value" id="drawer-city">-</span>
+        </div>
+        <div class="drawer-item">
+            <span class="label"><i class="fas fa-sticky-note"></i> Uwagi</span>
+            <span class="value" id="drawer-notes">-</span>
+        </div>
+
+        <hr style="border: none; border-top: 1px solid var(--border-color); margin: 20px 0 16px 0;">
+        <a id="drawer-full-link" href="#" class="button-primary" style="margin-top: auto; text-align: center;">
+            <i class="fas fa-external-link-alt"></i> Otwórz pełną kartę
+        </a>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/app_helpers.js') }}"></script>
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+<script>
+document.addEventListener('keydown', function(e) {
+    const activeElement = document.activeElement;
+    const isEditing = activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA' || activeElement.tagName === 'SELECT';
+
+    if (e.altKey && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        document.getElementById('add-modal')?.classList.remove('hidden');
+        document.getElementById('name-modal')?.focus();
+        return;
+    }
+
+    if (!isEditing) {
+        if (e.key === '/') {
+            e.preventDefault();
+            const searchInput = document.querySelector('input[name="q"]');
+            if (searchInput) searchInput.focus();
+        } else if (e.key.toLowerCase() === 'n') {
+            e.preventDefault();
+            document.getElementById('add-modal')?.classList.remove('hidden');
+            document.getElementById('name-modal')?.focus();
+        } else if (e.key === '1') {
+            document.getElementById('view-btn-table')?.click();
+        } else if (e.key === '2') {
+            document.getElementById('view-btn-kanban')?.click();
+        } else if (e.key === '3') {
+            document.getElementById('view-btn-calendar')?.click();
+        }
+    }
+
+    if (e.key === 'Escape') {
+        const modal = document.getElementById('add-modal');
+        if (modal && !modal.classList.contains('hidden')) {
+            modal.classList.add('hidden');
+        }
+        closeDrawer();
+    }
+});
+
+function openDrawerFromRow(row) {
+    const cells = row.querySelectorAll('td');
+    if (!cells.length) return;
+
+    document.getElementById('drawer-name').innerText = row.dataset.name || 'Brak nazwy';
+    document.getElementById('drawer-phone').innerText = row.dataset.phone || 'Brak';
+    document.getElementById('drawer-email').innerText = row.dataset.email || 'Brak';
+    document.getElementById('drawer-nip').innerText = row.dataset.nip || 'Brak';
+    document.getElementById('drawer-city').innerText = row.dataset.city || 'Brak';
+    document.getElementById('drawer-notes').innerText = row.dataset.notes || 'Brak';
+    
+    if (row.dataset.id) {
+        document.getElementById('drawer-full-link').href = `/contact/${row.dataset.id}`;
+    }
+
+    document.getElementById('quick-drawer').classList.remove('hidden');
+}
+
+function closeDrawer() {
+    document.getElementById('quick-drawer')?.classList.add('hidden');
+}
+
+document.querySelectorAll('#table-view tbody tr').forEach(row => {
+    row.addEventListener('click', (e) => {
+        if (e.target.tagName !== 'A' && e.target.tagName !== 'BUTTON') {
+            openDrawerFromRow(row);
+        }
+    });
+});
+</script>
+</body>
+</html>

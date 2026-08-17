@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>Szczegóły: {{ contact.name }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/extra.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --primary-hover: #1d4ed8;
+            --secondary-bg: #f8fafc;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --border-color: #e2e8f0;
+            --danger-color: #ef4444;
+            --danger-hover: #dc2626;
+            --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --radius: 10px;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f1f5f9;
+            color: var(--text-main);
+            margin: 0;
+            padding: 24px 16px;
+            line-height: 1.5;
+        }
+
+        .container-details {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        /* Nagłówek strony */
+        .detail-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #ffffff;
+            padding: 20px 24px;
+            border-radius: var(--radius);
+            box-shadow: var(--card-shadow);
+            margin-bottom: 24px;
+        }
+
+        .detail-header h1 {
+            margin: 0;
+            font-size: 1.5rem;
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* Komunikaty Flash */
+        .flash-messages {
+            margin-bottom: 24px;
+        }
+
+        .alert {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 500;
+        }
+
+        .alert-success { background-color: #dcfce7; color: #15803d; }
+        .alert-danger { background-color: #fee2e2; color: #b91c1c; }
+        .alert-info { background-color: #e0f2fe; color: #0369a1; }
+
+        /* Główny układ siatki */
+        .details-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+        }
+
+        @media (max-width: 900px) {
+            .details-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Karty */
+        .contact-card, .history-section {
+            background: #ffffff;
+            border-radius: var(--radius);
+            padding: 24px;
+            box-shadow: var(--card-shadow);
+        }
+
+        .contact-card h2, .history-section h2, .contact-card h3 {
+            margin-top: 0;
+            font-size: 1.25rem;
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 12px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text-main);
+        }
+
+        .contact-card p {
+            margin: 10px 0;
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+        }
+
+        .contact-card strong {
+            color: var(--text-muted);
+            min-width: 120px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .contact-card a {
+            color: var(--primary-color);
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .contact-card a:hover {
+            text-decoration: underline;
+        }
+
+        hr {
+            border: none;
+            border-top: 1px solid var(--border-color);
+            margin: 24px 0;
+        }
+
+        /* SEKCJA PRZYPOMNIEŃ */
+        .reminder-container {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            background-color: #f8fafc;
+            padding: 16px;
+            border-radius: 10px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .reminder-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .reminder-group label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #475569;
+        }
+
+        .input-inline-group {
+            display: flex;
+            gap: 8px;
+            width: 100%;
+            align-items: center;
+        }
+
+        .input-inline-group input {
+            flex: 1 1 auto !important;
+            width: 100% !important;
+            min-width: 0;
+            padding: 9px 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            background-color: #ffffff;
+        }
+
+        .input-inline-group button {
+            flex: 0 0 auto !important;
+            width: auto !important;
+            white-space: nowrap;
+            padding: 9px 20px;
+        }
+
+        .quick-reminders-section {
+            margin-top: 4px;
+        }
+
+        .quick-reminders-section small {
+            font-size: 0.8rem;
+            color: #64748b;
+            display: block;
+            margin-bottom: 6px;
+        }
+
+        .quick-chips-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .quick-chips-row .btn-chip {
+            flex: 1;
+            min-width: 70px;
+            text-align: center;
+            background-color: #ffffff;
+            border: 1px solid #cbd5e1;
+            border-radius: 20px;
+            padding: 6px 10px;
+            font-size: 0.82rem;
+            font-weight: 500;
+            color: #334155;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .quick-chips-row .btn-chip:hover {
+            background-color: #2563eb;
+            color: #ffffff;
+            border-color: #2563eb;
+            transform: translateY(-1px);
+        }
+
+        .reminder-divider {
+            display: flex;
+            align-items: center;
+            text-align: center;
+            color: #94a3b8;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .reminder-divider::before,
+        .reminder-divider::after {
+            content: '';
+            flex: 1;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .reminder-divider::before { margin-right: .5em; }
+        .reminder-divider::after { margin-left: .5em; }
+
+        .reminder-set {
+            background-color: #eff6ff;
+            border: 1px solid #bfdbfe;
+            color: #1e40af;
+            padding: 10px 14px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            font-size: 0.9rem;
+        }
+
+        /* Formularze i kontrolki */
+        textarea {
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 0.95rem;
+            outline: none;
+            transition: border-color 0.2s;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        textarea:focus, input:focus {
+            border-color: var(--primary-color) !important;
+        }
+
+        /* Przyciski ogólne */
+        button, .button-secondary, .back-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+
+        button[type="submit"]:not(.button-danger):not(.button-danger-text):not(.delete-btn-note) {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        button[type="submit"]:not(.button-danger):not(.button-danger-text):not(.delete-btn-note):hover {
+            background-color: var(--primary-hover);
+        }
+
+        .button-secondary {
+            background-color: #e2e8f0;
+            color: #334155;
+        }
+
+        .button-secondary:hover {
+            background-color: #cbd5e1;
+        }
+
+        .button-danger {
+            background-color: var(--danger-color);
+            color: white;
+        }
+
+        .button-danger:hover {
+            background-color: var(--danger-hover);
+        }
+
+        .button-danger-text {
+            background: none;
+            color: var(--danger-color);
+            padding: 4px 8px;
+        }
+
+        .button-danger-text:hover {
+            background: #fee2e2;
+        }
+
+        .back-link {
+            background: #f1f5f9;
+            color: #475569;
+            padding: 8px 12px;
+        }
+
+        .back-link:hover {
+            background: #e2e8f0;
+        }
+
+        /* Szablony notatek */
+        .note-templates {
+            margin-bottom: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .templates-label {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        .template-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .template-chips .btn-chip {
+            background-color: #f0f4f8;
+            color: #334155;
+            border: 1px solid #cbd5e1;
+            border-radius: 20px;
+            padding: 6px 14px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .template-chips .btn-chip:hover {
+            background-color: #e2e8f0;
+            border-color: #94a3b8;
+            color: #0f172a;
+            transform: translateY(-1px);
+        }
+
+        /* Historia Kontaktu */
+        .history-form {
+            background: var(--secondary-bg);
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 24px;
+        }
+
+        .history-form h3 {
+            margin-top: 0;
+            margin-bottom: 12px;
+            font-size: 1rem;
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+
+        .history-log {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .history-entry {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 12px 16px;
+            background: #f8fafc;
+            border-left: 3px solid var(--primary-color);
+            border-radius: 4px;
+        }
+
+        .history-content {
+            flex-grow: 1;
+        }
+
+        .history-date {
+            margin: 0 0 4px 0;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        .history-desc {
+            margin: 0;
+            font-size: 0.95rem;
+            white-space: pre-line;
+        }
+
+        .delete-btn-note {
+            background: transparent;
+            color: #94a3b8;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+        }
+
+        .delete-btn-note:hover {
+            color: var(--danger-color);
+            background: #fee2e2;
+        }
+    </style>
+</head>
+<body>
+<div class="container-details">
+    <div class="detail-header">
+        <h1><i class="fas fa-user-tie"></i> {{ contact.name }}</h1>
+        <div class="header-actions">
+            <a href="{{ url_for('contacts.edit_contact', contact_id=contact.id) }}" class="button-secondary">
+                <i class="fas fa-pencil-alt"></i> Edytuj
+            </a>
+            <form method="POST" action="{{ url_for('contacts.delete_contact', contact_id=contact.id) }}" onsubmit="return confirm('Czy na pewno chcesz trwale usunąć ten kontakt i całą jego historię?');" style="margin:0;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="button-danger" title="Usuń kontakt"><i class="fas fa-trash-alt"></i></button>
+            </form>
+            <a href="{{ url_for('main.index') }}" class="back-link" title="Wróć do listy"><i class="fas fa-arrow-left"></i></a>
+        </div>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="flash-messages">
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}"><i class="fas fa-info-circle"></i> {{ message }}</div>
+            {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <main class="details-grid">
+        <div class="contact-card">
+            <h2><i class="fas fa-id-card"></i> Dane i Ustawienia</h2>
+            
+            <p><strong><i class="fas fa-road"></i> Ulica:</strong> {{ contact.street or 'Brak' }}</p>
+            <p><strong><i class="fas fa-city"></i> Miasto:</strong> {{ contact.city or 'Brak' }}</p>
+
+            {% if contact.street or contact.city %}
+            <p>
+                <strong><i class="fas fa-map-marked-alt"></i> Mapa:</strong> 
+                <a href="https://www.google.com/maps/search/?api=1&query={{ (contact.street or '') + ' ' + (contact.city or '') }}" target="_blank">
+                    Otwórz w Google Maps <i class="fas fa-external-link-alt" style="font-size:0.8em;"></i>
+                </a>
+            </p>
+            {% endif %}
+
+            <p><strong><i class="fas fa-map-marker-alt"></i> Województwo:</strong> {{ contact.voivodeship or 'Brak' }}</p>
+            <p>
+                <strong><i class="fas fa-phone"></i> Telefon:</strong> 
+                {% if contact.phone %}
+                    <a href="tel:{{ contact.phone }}">{{ contact.phone }}</a>
+                {% else %}Brak{% endif %}
+            </p>
+            <p>
+                <strong><i class="fas fa-envelope"></i> E-mail:</strong> 
+                {% if contact.email %}
+                    <a href="mailto:{{ contact.email }}">{{ contact.email }}</a>
+                {% else %}Brak{% endif %}
+            </p>
+            <p><strong><i class="fas fa-id-badge"></i> NIP:</strong> {{ contact.nip or 'Brak' }}</p>
+            <p>
+                <strong><i class="fas fa-globe"></i> WWW:</strong> 
+                {% if contact.www %}
+                    <a href="{{ contact.www }}" target="_blank" rel="noopener noreferrer">{{ contact.www }}</a>
+                {% else %}Brak{% endif %}
+            </p>
+            <p style="align-items: flex-start;">
+                <strong><i class="fas fa-sticky-note"></i> Uwagi:</strong> 
+                <span>{{ contact.notes or 'Brak' }}</span>
+            </p>
+
+            <hr>
+
+            <h3><i class="fas fa-bell"></i> Ustaw przypomnienie</h3>
+
+            {% if contact.reminder_date %}
+            <div class="reminder-set">
+                <span><i class="fas fa-clock"></i> Aktywne przypomnienie: <strong>{{ contact.reminder_date }}</strong></span>
+                <form action="{{ url_for('contacts.set_reminder', contact_id=contact.id) }}" method="POST" style="margin:0;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="reminder_date" value="">
+                    <button type="submit" class="button-danger-text" title="Usuń przypomnienie">
+                        <i class="fas fa-times-circle"></i> Usuń
+                    </button>
+                </form>
+            </div>
+            {% endif %}
+
+            <div class="reminder-container">
+                <!-- Opcja 1: Konkretna data + szybki wybór -->
+                <div class="reminder-group">
+                    <label for="reminder_date">Wybierz datę kalendarzową:</label>
+                    <form action="{{ url_for('contacts.set_reminder', contact_id=contact.id) }}" method="POST" class="input-inline-group">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="date" id="reminder_date" name="reminder_date">
+                        <button type="submit">Zapisz</button>
+                    </form>
+
+                    <div class="quick-reminders-section">
+                        <small>Szybkie ustawienie:</small>
+                        <div class="quick-chips-row">
+                            <button type="button" class="btn-chip" onclick="setQuickDaysAsync({{ contact.id }}, 1)">+1 dzień</button>
+                            <button type="button" class="btn-chip" onclick="setQuickDaysAsync({{ contact.id }}, 3)">+3 dni</button>
+                            <button type="button" class="btn-chip" onclick="setQuickDaysAsync({{ contact.id }}, 7)">+7 dni</button>
+                            <button type="button" class="btn-chip" onclick="setQuickDaysAsync({{ contact.id }}, 30)">+1 msc</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="reminder-divider">lub</div>
+
+                <!-- Opcja 2: Dni od ostatniego kontaktu -->
+                <div class="reminder-group">
+                    <label for="reminder_days">Dni od ostatniego kontaktu:</label>
+                    <form action="{{ url_for('contacts.set_reminder_days', contact_id=contact.id) }}" method="POST" class="input-inline-group">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="number" id="reminder_days" name="reminder_days" min="1" placeholder="np. 30">
+                        <button type="submit">Ustaw</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="history-section">
+            <h2><i class="fas fa-history"></i> Historia Kontaktu</h2>
+            
+            <div class="history-form">
+                <h3>Dodaj wpis</h3>
+                <div class="note-templates">
+                    <span class="templates-label"><i class="fas fa-magic"></i> Szybki szablon:</span>
+                    <div class="template-chips">
+                        <button type="button" class="btn-chip" onclick="insertTemplate('📞 Rozmowa telefoniczna: ')">
+                            <i class="fas fa-phone-alt"></i> Telefon
+                        </button>
+                        <button type="button" class="btn-chip" onclick="insertTemplate('📧 Wysłano ofertę mailową.')">
+                            <i class="fas fa-paper-plane"></i> E-mail
+                        </button>
+                        <button type="button" class="btn-chip" onclick="insertTemplate('🤝 Spotkanie bezpośrednie: ')">
+                            <i class="fas fa-handshake"></i> Spotkanie
+                        </button>
+                        <button type="button" class="btn-chip" onclick="insertTemplate('❌ Brak kontaktu / Prośba o ponowny telefon.')">
+                            <i class="fas fa-phone-slash"></i> Brak odpowiedzi
+                        </button>
+                    </div>
+                </div>
+
+                <form action="{{ url_for('history.add_note', contact_id=contact.id) }}" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <textarea name="note_text" rows="3" placeholder="Opisz interakcję..." required style="margin-bottom: 10px;"></textarea>
+                    <button type="submit"><i class="fas fa-plus"></i> Dodaj do historii</button>
+                </form>
+            </div>
+
+            <div class="history-log">
+                {% for entry in history %}
+                    <div class="history-entry">
+                        <div class="history-content">
+                            <p class="history-date"><i class="far fa-calendar-alt"></i> {{ entry.change_date.split(' ')[0] }}</p>
+                            <p class="history-desc">{{ entry.change_description }}</p>
+                        </div>
+                        <form method="POST" action="{{ url_for('history.delete_history_note', history_id=entry.id) }}" onsubmit="return confirm('Czy na pewno usunąć tę notatkę?');" style="margin:0;">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="delete-btn-note" title="Usuń notatkę"><i class="fas fa-trash-alt"></i></button>
+                        </form>
+                    </div>
+                {% else %}
+                    <p style="color: var(--text-muted); text-align: center; padding: 20px 0;">Brak historii dla tego kontaktu.</p>
+                {% endfor %}
+            </div>
+        </div>
+    </main>
+</div>
+
+<script src="{{ url_for('static', filename='js/app_helpers.js') }}"></script>
+<script>
+function insertTemplate(text) {
+    const textarea = document.querySelector('textarea[name="note_text"]');
+    if (textarea) {
+        textarea.value = text + textarea.value;
+        textarea.focus();
+    }
+}
+
+document.addEventListener('keydown', function(e) {
+    const activeElement = document.activeElement;
+    const isEditing = activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA' || activeElement.tagName === 'SELECT';
+
+    if (!isEditing) {
+        if (e.key.toLowerCase() === 'e') {
+            e.preventDefault();
+            const editBtn = document.querySelector('.header-actions a.button-secondary');
+            if (editBtn) window.location.href = editBtn.href;
+        } else if (e.key.toLowerCase() === 'n') {
+            e.preventDefault();
+            const noteTextarea = document.querySelector('textarea[name="note_text"]');
+            if (noteTextarea) noteTextarea.focus();
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            const backLink = document.querySelector('.back-link');
+            if (backLink) window.location.href = backLink.href;
+        }
+    }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>Edytuj: {{ contact.name }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/extra.css') }}">
+</head>
+<body>
+<div class="container-details">
+    <div class="detail-header">
+        <h1>Edytuj kontakt: {{ contact.name }}</h1>
+        <a href="{{ url_for('contacts.contact_detail', contact_id=contact.id) }}" class="back-link">&larr; Anuluj i wróć</a>
+    </div>
+
+    <main>
+        <div class="edit-form-container">
+            <form method="POST" action="{{ url_for('contacts.update_contact', contact_id=contact.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="form-grid">
+                    <div>
+                        <label for="name">Nazwa:</label>
+                        <input type="text" id="name" name="name" value="{{ contact.name }}" required>
+                    </div>
+                    <div>
+                        <label for="phone">Telefon:</label>
+                        <input type="text" id="phone" name="phone" value="{{ contact.phone or '' }}">
+                    </div>
+                    <div>
+                        <label for="email">E-mail:</label>
+                        <input type="email" id="email" name="email" value="{{ contact.email or '' }}">
+                    </div>
+                    <div>
+                        <label for="nip">NIP:</label>
+                        <div class="input-with-btn" style="display: flex; gap: 8px;">
+                            <input type="text" id="nip" name="nip" value="{{ contact.nip or '' }}" placeholder="np. 5261040828" style="flex:1;">
+                            <button type="button" class="button-secondary" onclick="fetchGusData()">Pobierz z GUS</button>
+                        </div>
+                    </div>
+                    <div>
+                        <label for="www">WWW:</label>
+                        <input type="text" id="www" name="www" value="{{ contact.www or '' }}">
+                    </div>
+                    <div>
+                        <label for="street">Ulica:</label>
+                        <input type="text" id="street" name="street" value="{{ contact.street or '' }}">
+                    </div>
+                    <div>
+                        <label for="city">Miasto:</label>
+                        <input type="text" id="city" name="city" value="{{ contact.city or '' }}">
+                    </div>
+                    <div>
+                        <label for="voivodeship">Województwo:</label>
+                        <input type="text" id="voivodeship" name="voivodeship" value="{{ contact.voivodeship or '' }}">
+                    </div>
+                </div>
+                <div style="margin-top: 12px;">
+                    <label for="notes">Uwagi:</label>
+                    <textarea id="notes" name="notes" rows="4">{{ contact.notes or '' }}</textarea>
+                </div>
+                <button type="submit" class="button-primary" style="margin-top: 16px;">Zapisz zmiany</button>
+            </form>
+        </div>
+    </main>
+</div>
+
+<script src="{{ url_for('static', filename='js/app_helpers.js') }}"></script>
+<script>
+document.addEventListener('keydown', function(e) {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        const form = document.querySelector('.edit-form-container form');
+        if (form) form.submit();
+    }
+
+    if (e.key === 'Escape') {
+        const cancelLink = document.querySelector('.back-link');
+        if (cancelLink) window.location.href = cancelLink.href;
+    }
+});
+</script>
+</body>
+</html>

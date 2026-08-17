@@ -1,0 +1,452 @@
+:root {
+    --primary-color: #2a6fdb;
+    --secondary-color: #6c757d;
+    --success-color: #28a745;
+    --danger-color: #dc3545;
+    --light-gray: #f4f7fa;
+    --dark-gray: #343a40;
+    --border-color: #dee2e6;
+    --white: #fff;
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    --border-radius: 8px;
+}
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+    background-color: var(--light-gray);
+    color: var(--dark-gray);
+    margin: 0;
+}
+.container { display: flex; }
+
+main#main-content {
+    flex-grow: 1;
+    padding: 30px 40px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+h1, h2, h3 { color: var(--primary-color); }
+h1 {
+    font-weight: 500; /* Lekkie pogrubienie dla czytelności */
+    font-size: 1.8em; /* Zmniejszenie rozmiaru czcionki */
+    margin: 0 0 20px 0;
+}
+h2, h3 { border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 15px; font-weight: 500; }
+h3 { font-size: 1.1em; }
+label { display: block; margin-bottom: 5px; font-weight: 500; font-size: 0.9em; color: var(--secondary-color); }
+
+input, textarea, select {
+    width: 100%; padding: 10px; margin-bottom: 15px;
+    border: 1px solid var(--border-color); border-radius: 4px;
+    box-sizing: border-box; background-color: #fdfdff;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+input:focus, textarea:focus, select:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(42, 111, 219, 0.2);
+    outline: none;
+}
+button, .button-secondary {
+    display: inline-flex; align-items: center; justify-content: center;
+    gap: 8px; padding: 10px 15px; border: none;
+    border-radius: var(--border-radius); cursor: pointer;
+    font-size: 15px; font-weight: 500; text-decoration: none; color: var(--white);
+    transition: transform 0.1s, background-color 0.2s;
+}
+button:hover, .button-secondary:hover { transform: translateY(-1px); }
+button:active, .button-secondary:active { transform: translateY(0); }
+button { background-color: var(--success-color); width: 100%; }
+.button-primary { background-color: var(--primary-color); }
+.button-secondary { background-color: var(--secondary-color); }
+
+.filter-bar {
+    background: var(--white); padding: 20px;
+    border-radius: var(--border-radius); margin-bottom: 20px;
+    box-shadow: var(--shadow-sm); position: sticky;
+    top: 0; z-index: 900;
+}
+.filter-bar .main-filters {
+    display: flex; gap: 10px; align-items: center; flex-wrap: nowrap;
+}
+.filter-bar .search-wrapper { position: relative; flex-grow: 1; flex-shrink: 1; min-width: 200px; }
+.filter-bar .main-filters button, .filter-bar .main-filters .button-secondary { flex-shrink: 0; }
+.filter-bar .search-wrapper .fa-search { position: absolute; left: 12px; top: 12px; color: #aaa; }
+.filter-bar input[type="text"] { margin: 0; padding-left: 35px; }
+.filter-bar button { width: auto; }
+
+#advanced-filters, #column-selector {
+    padding-top: 15px; margin-top: 15px;
+    border-top: 1px solid var(--border-color);
+    transition: all 0.3s ease;
+}
+#advanced-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
+#column-selector { display: flex; flex-wrap: wrap; gap: 15px; font-size: 0.9em; }
+#column-selector label { display: flex; align-items: center; gap: 5px; cursor: pointer; font-weight: 400; }
+
+.contacts-container { background: var(--white); border-radius: var(--border-radius); box-shadow: var(--shadow-sm); }
+.table-wrapper { overflow-x: auto; }
+table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+th, td {
+    padding: 12px 15px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+thead th {
+    background-color: #e9ecef;
+    font-size: 0.85em;
+    text-transform: uppercase;
+    color: var(--secondary-color);
+    position: relative;
+    white-space: nowrap;
+}
+td {
+    white-space: normal;
+    word-break: break-word;
+}
+thead th a { color: var(--secondary-color); text-decoration: none; transition: color 0.2s; }
+thead th a:hover { color: var(--primary-color); }
+tbody tr:hover { background-color: #f1f8ff; }
+table a { color: var(--primary-color); text-decoration: none; font-weight: 500; }
+.notes-cell, .last-note { max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Kolory i style statusów */
+tr[data-contact-id] { cursor: pointer; transition: background-color 0.3s ease; }
+.status-aktywny { background-color: #c8e6c9; }
+.status-kontakt { background-color: #bbdefb; }
+.status-utracony { background-color: #ffcdd2; }
+.status-lojalny { background-color: #fff9c4; }
+.status-nieaktywny { background-color: #cfd8dc; }
+tbody tr.status-aktywny:hover { background-color: #a5d6a7; }
+tbody tr.status-kontakt:hover { background-color: #90caf9; }
+tbody tr.status-utracony:hover { background-color: #ef9a9a; }
+tbody tr.status-lojalny:hover { background-color: #fff59d; }
+tbody tr.status-nieaktywny:hover { background-color: #b0bec5; }
+
+.status-icon { margin-right: 8px; font-size: 1.1em; display: inline-block; width: 20px; text-align: center; }
+.status-nowy .status-icon { color: #90a4ae; }
+.status-aktywny .status-icon { color: #4caf50; }
+.status-kontakt .status-icon { color: #1976d2; }
+.status-utracony .status-icon { color: #d32f2f; }
+.status-lojalny .status-icon { color: #fbc02d; }
+.status-nieaktywny .status-icon { color: #546e7a; }
+
+.has-reminder { font-weight: 600; }
+tr.reminder-overdue { background-color: #ffcdd2 !important; color: #b71c1c !important; }
+tr.reminder-overdue a { color: #b71c1c !important; }
+tr.reminder-overdue:hover { background-color: #ef9a9a !important; }
+.note-date { display: block; font-size: 0.8em; color: #888; font-style: normal; font-weight: 400; }
+
+/* Style dla strony szczegółów */
+.detail-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid var(--border-color); }
+.header-actions { display: flex; gap: 10px; align-items: center; }
+.button-danger { background-color: var(--danger-color); font-size: 1em; padding: 10px; }
+.button-danger-text { background: none; border: none; color: var(--danger-color); cursor: pointer; font-size: 0.9em; }
+.back-link { color: var(--secondary-color); text-decoration: none; font-size: 1.5em; }
+.details-grid { display: grid; grid-template-columns: 400px 1fr; gap: 30px; }
+.contact-card, .history-section { background: var(--white); padding: 25px; border-radius: var(--border-radius); box-shadow: var(--shadow-sm); }
+.contact-card p { display: flex; align-items: center; gap: 10px; }
+.contact-card p i { color: var(--secondary-color); }
+.reminder-set { display: flex; justify-content: space-between; align-items: center; background-color: var(--reminder-bg); padding: 10px; border-radius: 4px; margin-bottom: 15px; }
+.reminder-forms { display: flex; gap: 15px; align-items: flex-end; }
+.history-entry { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding: 15px 0; }
+.delete-btn-note { background: none; border: 1px solid #ccc; color: #888; border-radius: 50%; width: 25px; height: 25px; font-size: 12px; line-height: 1; cursor: pointer; padding: 0; }
+.flash-messages { margin-bottom: 20px; }
+.alert { padding: 15px; border-radius: 4px; color: var(--white); }
+.alert-success { background-color: var(--success-color); }
+.alert-danger { background-color: var(--danger-color); }
+.alert-warning { background-color: #ffc107; color: var(--dark-gray); }
+.edit-form-container { background: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+
+/* Style dla pływającego przycisku i okna dialogowego */
+.fab {
+    position: fixed; bottom: 30px; right: 30px;
+    width: 60px; height: 60px; border-radius: 50%;
+    background-color: var(--primary-color); color: var(--white);
+    font-size: 24px; border: none; box-shadow: var(--shadow-md);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    z-index: 1000; transition: transform 0.2s;
+}
+.fab:hover { transform: scale(1.1); }
+
+.modal-overlay {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    background-color: rgba(0, 0, 0, 0.6);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 2000; opacity: 1; transition: opacity 0.3s ease;
+}
+.modal-overlay.hidden { opacity: 0; pointer-events: none; }
+.modal-content {
+    background: var(--white); padding: 30px;
+    border-radius: var(--border-radius); width: 90%; max-width: 500px;
+    max-height: 90vh; overflow-y: auto; position: relative;
+    transform: scale(1); transition: transform 0.3s ease;
+}
+.modal-overlay.hidden .modal-content { transform: scale(0.9); }
+.modal-close-btn {
+    position: absolute; top: 15px; right: 15px;
+    background: none; border: none; font-size: 28px;
+    cursor: pointer; color: var(--secondary-color);
+}
+
+/* Style dla uchwytów do zmiany szerokości kolumn */
+.resizer {
+    position: absolute;
+    top: 0;
+    right: -2px;
+    width: 5px;
+    cursor: col-resize;
+    height: 100%;
+    user-select: none;
+    z-index: 10;
+}
+.resizer:hover {
+    background-color: var(--primary-color);
+    opacity: 0.5;
+}
+
+/* Przełącznik widoków i Kanban */
+.view-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px; /* Zmniejszenie odstępu pod nagłówkiem */
+}
+.view-switcher {
+    display: flex;
+    background-color: #e9ecef;
+    border-radius: var(--border-radius);
+    padding: 4px;
+    margin-left: auto; /* Kluczowa zmiana: przesuwa przełącznik na prawą stronę */
+}
+.view-btn { background: none; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; color: var(--secondary-color); font-size: 1.1em; }
+.view-btn.active { background-color: var(--white); color: var(--primary-color); box-shadow: var(--shadow-sm); }
+.kanban-board { display: flex; gap: 16px; overflow-x: auto; padding-bottom: 16px; }
+.kanban-column {
+    flex: 1 1 200px;
+    background-color: #eff2f5;
+    border-radius: var(--border-radius);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+}
+.kanban-column h3 { font-size: 1rem; font-weight: 600; padding-bottom: 12px; margin: 0 0 12px 0; border-bottom: 1px solid var(--border-color); color: var(--dark-gray); }
+.kanban-cards { min-height: 100px; }
+.kanban-card {
+    background-color: var(--white); border-radius: 6px;
+    padding: 12px; margin-bottom: 12px; box-shadow: var(--shadow-sm);
+    border-left: 4px solid var(--secondary-color); cursor: grab;
+}
+.kanban-card:hover { box-shadow: var(--shadow-md); border-left-color: var(--primary-color); }
+.kanban-card-title { font-weight: 600; margin-bottom: 8px; }
+.kanban-card-meta, .kanban-card-reminder { font-size: 0.85em; color: var(--text-muted-color); }
+.kanban-card-reminder { margin-top: 8px; color: var(--danger-color); }
+.kanban-card-ghost { opacity: 0.4; background: #cce5ff; }
+
+/* Kalendarz */
+.calendar-container {
+    background-color: var(--white); padding: 20px;
+    border-radius: var(--border-radius); box-shadow: var(--shadow-sm);
+    height: 85vh;
+}
+.fc .fc-button {
+    background-color: var(--background-color) !important;
+    border: 1px solid var(--border-color) !important;
+    color: var(--text-color) !important;
+    box-shadow: none !important;
+    transition: all 0.2s ease-in-out;
+}
+.fc .fc-button-primary:not(:disabled).fc-button-active,
+.fc .fc-button-primary:not(:disabled):active {
+    background-color: var(--primary-color) !important;
+    border-color: var(--primary-color) !important;
+    color: var(--white) !important;
+}
+.fc .fc-button:hover { background-color: #e2e6ea !important; }
+.fc .fc-toolbar-title { color: var(--dark-gray); font-size: 1.5em; font-weight: 500; }
+.fc .fc-col-header-cell { background-color: var(--background-color); border: 1px solid var(--border-color); font-weight: 500; }
+.fc .fc-daygrid-day { border-color: var(--border-color); }
+.fc .fc-daygrid-day.fc-day-today { background-color: rgba(0, 122, 255, 0.1) !important; }
+.fc .fc-daygrid-day-number { padding: 8px; }
+.fc .fc-event {
+    border: 1px solid var(--primary-color) !important;
+    padding: 4px 6px; border-radius: 4px;
+    font-weight: 500; cursor: pointer; transition: filter 0.2s;
+}
+}
+.fc .fc-event:hover { filter: brightness(1.1); }
+.fc-direction-ltr .fc-daygrid-event .fc-event-main { color: var(--white); }
+
+/* ### NOWE, POPRAWIONE STYLE DLA WIDOKU LISTY ### */
+
+/* Główny kontener tabeli w widoku listy - to jest kluczowa zmiana */
+.fc .fc-list {
+    width: 100% !important; /* Wymusza pełną szerokość */
+    border: none;
+}
+
+/* Nagłówek dnia */
+.fc-theme-standard .fc-list-day-cushion {
+    background-color: var(--background-color);
+    padding: 10px 16px;
+}
+.fc-direction-ltr .fc-list-day-text, .fc-direction-ltr .fc-list-day-side-text {
+    font-size: 1.1em;
+    font-weight: 600;
+    text-decoration: none;
+    color: var(--dark-gray);
+}
+
+/* Wiersz wydarzenia w liście */
+.fc-list-event {
+    background: none !important;
+    border: none !important;
+    padding: 0;
+}
+.fc-list-event:hover td {
+    background-color: #f1f8ff; /* Efekt hover dla całego wiersza */
+}
+.fc-list-event-custom {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    padding: 12px 10px;
+    color: var(--text-color);
+    border-bottom: 1px solid var(--border-color); /* Linia oddzielająca wpisy */
+}
+
+/* Nazwa kontaktu (lewa kolumna) */
+.fc-list-event-name {
+    display: flex;
+    align-items: center;
+    flex-grow: 1;
+    padding-right: 15px;
+    min-width: 0; 
+}
+.fc-list-event-name a {
+    font-weight: 500;
+    text-decoration: none;
+    color: var(--primary-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Notatka (prawa kolumna) */
+.fc-list-event-note {
+    color: var(--text-muted-color);
+    font-size: 0.9em;
+    font-style: italic;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 45%;
+    text-align: right;
+    flex-shrink: 0;
+}
+/* ### NOWA POPRAWKA: Utrzymanie przycisków kalendarza w jednej linii ### */
+
+.fc-header-toolbar {
+    display: flex;
+    flex-wrap: nowrap; /* Zapobiega łamaniu linii */
+    align-items: center;
+}
+
+.fc-header-toolbar .fc-toolbar-chunk {
+    display: flex;
+    align-items: center;
+}
+
+/* Sekcja z tytułem ma być elastyczna */
+.fc-header-toolbar .fc-toolbar-chunk:nth-child(2) { /* Celuje w środkowy element (title) */
+    flex-grow: 1;
+    flex-shrink: 1;
+    justify-content: center;
+    min-width: 0; /* Ważne, aby tekst w tytule mógł się zwężać */
+}
+
+.fc-header-toolbar .fc-toolbar-title {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis; /* Dodaje "..." jeśli tytuł się nie mieści */
+}
+
+/* Sekcje z przyciskami mają mieć stałą szerokość */
+.fc-header-toolbar .fc-toolbar-chunk:nth-child(1), /* Lewa */
+.fc-header-toolbar .fc-toolbar-chunk:nth-child(3) { /* Prawa */
+    flex-shrink: 0;
+}
+
+/* Klasa do ukrywania widoków */
+.hidden {
+    display: none !important;
+}
+
+/* Kontener szablonów */
+.note-templates {
+    margin-bottom: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.templates-label {
+    font-size: 0.85rem;
+    color: #6c757d;
+    font-weight: 600;
+}
+
+/* Układ przycisków w chmurze (chips) */
+.template-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+/* Styl dla pojedynczego przycisku-szablonu */
+.btn-chip {
+    background-color: #f0f4f8;
+    color: #334155;
+    border: 1px solid #cbd5e1;
+    border-radius: 20px;
+    padding: 6px 14px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Efekty najechania i kliknięcia */
+.btn-chip:hover {
+    background-color: #e2e8f0;
+    border-color: #94a3b8;
+    color: #0f172a;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.btn-chip:active {
+    transform: translateY(0);
+    box-shadow: none;
+    background-color: #cbd5e1;
+}
+
+.btn-chip i {
+    font-size: 0.8rem;
+    color: #64748b;
+}
+
+.btn-chip:hover i {
+    color: #1e293b;
+}
