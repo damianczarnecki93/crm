@@ -163,6 +163,9 @@
                         <button type="button" id="toggle-column-selector" class="button-secondary" title="Wybierz kolumny">
                             <i class="fas fa-columns"></i>
                         </button>
+                        <button type="button" id="btn-missing-data-wizard" class="button-secondary" title="Uzupełnij brakujące dane" style="background-color: #d97706; color: white;">
+                            <i class="fas fa-wrench"></i> Uzupełnij dane
+                        </button>
                     </div>
                 </div>
                 
@@ -220,7 +223,7 @@
                             <th class="col-notes"><a href="#" data-sort="notes">Uwagi</a></th>
                             <th class="col-reminder_date"><a href="#" data-sort="reminder_date">Przypomnienie</a></th>
                             <th class="col-last_note"><a href="#" data-sort="last_note_date">Notatka</a></th>
-                            <th class="col-score">Score</th>
+                            <th class="col-score"><a href="#" data-sort="lead_score">Score</a></th>
                             <th class="col-actions">Akcje</th>
                         </tr>
                     </thead>
@@ -308,6 +311,49 @@
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="file" name="csv_file" accept=".csv" required style="font-size: 0.85rem;">
                 <button type="submit" class="button-secondary">Importuj</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Uzupełniania Brakujących Danych (Wizard) -->
+<div id="missing-data-modal" class="modal-overlay hidden">
+    <div class="modal-content" style="max-width: 550px;">
+        <button id="close-missing-data-modal" class="modal-close-btn">&times;</button>
+        <h2><i class="fas fa-wrench"></i> Uzupełnianie Brakujących Danych</h2>
+        <div id="wizard-body">
+            <p id="wizard-progress" style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;"></p>
+            <form id="wizard-form" style="display: flex; flex-direction: column; gap: 12px;">
+                <input type="hidden" id="wizard-contact-id">
+
+                <div>
+                    <label style="font-weight: bold;" id="wizard-contact-title">---</label>
+                </div>
+
+                <div class="form-group">
+                    <label for="wizard-phone">Telefon:</label>
+                    <input type="text" id="wizard-phone" placeholder="Brak danych">
+                </div>
+
+                <div class="form-group">
+                    <label for="wizard-email">E-mail:</label>
+                    <input type="email" id="wizard-email" placeholder="Brak danych">
+                </div>
+
+                <div class="form-group">
+                    <label for="wizard-nip">NIP:</label>
+                    <input type="text" id="wizard-nip" placeholder="Brak danych">
+                </div>
+
+                <div class="form-group">
+                    <label for="wizard-city">Miasto:</label>
+                    <input type="text" id="wizard-city" placeholder="Brak danych">
+                </div>
+
+                <div style="display: flex; gap: 8px; margin-top: 12px;">
+                    <button type="button" id="wizard-skip-btn" class="button-secondary" style="flex: 1;">Pomiń</button>
+                    <button type="submit" class="button-primary" style="flex: 2;"><i class="fas fa-save"></i> Zapisz i następny</button>
+                </div>
             </form>
         </div>
     </div>

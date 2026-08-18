@@ -714,6 +714,16 @@ document.addEventListener('DOMContentLoaded', function() {
     // Handling Add Note form
     const addNoteForm = document.getElementById('add-note-form');
     if (addNoteForm) {
+        const noteTextarea = addNoteForm.querySelector('textarea[name="note_text"]');
+        if (noteTextarea) {
+            noteTextarea.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    addNoteForm.requestSubmit();
+                }
+            });
+        }
+
         addNoteForm.addEventListener('submit', function(e) {
             e.preventDefault();
             const noteText = addNoteForm.querySelector('textarea[name="note_text"]').value.trim();

@@ -111,7 +111,7 @@ def get_filtered_contacts_from_db(search_query, filter_city, filter_status, sort
         'voivodeship': 'c.voivodeship', 'phone': 'c.phone', 'email': 'c.email', 
         'nip': 'c.nip', 'www': 'c.www', 'notes': 'c.notes', 
         'reminder_date': 'c.reminder_date', 'last_note_date': 'h.last_note_date',
-        'status': 'c.status'
+        'status': 'c.status', 'lead_score': 'c.name'
     }
     
     sql_sort_column = valid_sort_columns.get(sort_by, 'c.name')
@@ -182,6 +182,10 @@ def get_filtered_contacts_from_db(search_query, filter_city, filter_status, sort
         cdict = dict(c)
         cdict['lead_score'] = calculate_lead_score(cdict, cdict.get('note_count', 0))
         result.append(cdict)
+
+    if sort_by == 'lead_score':
+        reverse_flag = (sort_order.lower() != 'asc')
+        result.sort(key=lambda item: item['lead_score'], reverse=reverse_flag)
 
     return result
 

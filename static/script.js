@@ -71,6 +71,117 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // --- Moduł Uzupełniania Brakujących Danych (Wizard) ---
+    const wizardModal = document.getElementById('missing-data-modal');
+    const closeWizardBtn = document.getElementById('close-missing-data-modal');
+    const openWizardBtn = document.getElementById('btn-missing-data-wizard');
+    const wizardForm = document.getElementById('wizard-form');
+    const wizardSkipBtn = document.getElementById('wizard-skip-btn');
+
+    let incompleteContacts = [];
+    let currentWizardIndex = 0;
+
+    if (closeWizardBtn && wizardModal) {
+        closeWizardBtn.addEventListener('click', () => wizardModal.classList.add('hidden'));
+        wizardModal.addEventListener('click', (e) => {
+            if (e.target === wizardModal) wizardModal.classList.add('hidden');
+        });
+    }
+
+    function loadWizardContact() {
+        if (!incompleteContacts || currentWizardIndex >= incompleteContacts.length) {
+            wizardModal.classList.add('hidden');
+            showToast('Wszystkie zaległe kontakty zostały zweryfikowane!', 'success');
+            fetchFilteredContacts();
+            refreshStats();
+            return;
+        }
+
+        const contact = incompleteContacts[currentWizardIndex];
+        document.getElementById('wizard-contact-id').value = contact.id;
+        document.getElementById('wizard-contact-title').innerText = `${contact.name} (Klient ${currentWizardIndex + 1} z ${incompleteContacts.length})`;
+        document.getElementById('wizard-progress').innerText = `Postęp: ${currentWizardIndex + 1} / ${incompleteContacts.length}`;
+        document.getElementById('wizard-phone').value = contact.phone || '';
+        document.getElementById('wizard-email').value = contact.email || '';
+        document.getElementById('wizard-nip').value = contact.nip || '';
+        document.getElementById('wizard-city').value = contact.city || '';
+    }
+
+    if (openWizardBtn) {
+        openWizardBtn.addEventListener('click', function() {
+            showSpinner();
+            fetch('/filter')
+                .then(res => res.json())
+                .then(contacts => {
+                    hideSpinner();
+                    incompleteContacts = contacts.filter(c => !c.phone || !c.email || !c.nip || !c.city);
+                    if (incompleteContacts.length === 0) {
+                        showToast('Świetnie! Wszyscy klienci posiadają kompletne dane.', 'success');
+                        return;
+                    }
+                    currentWizardIndex = 0;
+                    wizardModal.classList.remove('hidden');
+                    loadWizardContact();
+                })
+                .catch(() => {
+                    hideSpinner();
+                    showToast('Błąd pobierania listy kontaktów.', 'danger');
+                });
+        });
+    }
+
+    if (wizardSkipBtn) {
+        wizardSkipBtn.addEventListener('click', function() {
+            currentWizardIndex++;
+            loadWizardContact();
+        });
+    }
+
+    if (wizardForm) {
+        wizardForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const contactId = document.getElementById('wizard-contact-id').value;
+            const contact = incompleteContacts[currentWizardIndex];
+
+            const updatedData = {
+                name: contact.name,
+                street: contact.street || '',
+                city: document.getElementById('wizard-city').value.trim(),
+                voivodeship: contact.voivodeship || '',
+                phone: document.getElementById('wizard-phone').value.trim(),
+                email: document.getElementById('wizard-email').value.trim(),
+                nip: document.getElementById('wizard-nip').value.trim(),
+                www: contact.www || '',
+                notes: contact.notes || ''
+            };
+
+            showSpinner();
+            fetch(`/contact/${contactId}/update`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                },
+                body: JSON.stringify(updatedData)
+            })
+            .then(res => res.json())
+            .then(data => {
+                hideSpinner();
+                if (data.success) {
+                    showToast('Zaktualizowano dane kontaktu!', 'success');
+                    currentWizardIndex++;
+                    loadWizardContact();
+                } else {
+                    showToast(data.message || 'Błąd aktualizacji.', 'danger');
+                }
+            })
+            .catch(() => {
+                hideSpinner();
+                showToast('Błąd komunikacji z serwerem.', 'danger');
+            });
+        });
+    }
+
     // --- Obsługa modala powodu utraty ---
     const lostReasonModal = document.getElementById('lost-reason-modal');
     const closeLostReasonBtn = document.getElementById('close-lost-reason-modal');
@@ -126,6 +237,16 @@ document.addEventListener('DOMContentLoaded', function() {
         closeQuickNoteBtn.addEventListener('click', () => quickNoteModal.classList.add('hidden'));
         quickNoteModal.addEventListener('click', (e) => {
             if (e.target === quickNoteModal) quickNoteModal.classList.add('hidden');
+        });
+    }
+
+    const quickNoteTextarea = document.getElementById('quick-note-text');
+    if (quickNoteTextarea && quickNoteForm) {
+        quickNoteTextarea.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                quickNoteForm.requestSubmit();
+            }
         });
     }
 
@@ -465,17 +586,23 @@ function renderCalendar() {
         mapMarkers.forEach(m => leafletMap.removeLayer(m));
         mapMarkers = [];
 
-        contacts.forEach(c => {
+        contacts.forEach((c, idx) => {
             const cityKey = (c.city || '').toLowerCase().trim();
-            if (cityKey && cityCoords[cityKey]) {
-                const coords = cityCoords[cityKey];
-                // Losowe przesunięcie jeśli w tym samym mieście
-                const lat = coords[0] + (Math.random() - 0.5) * 0.04;
-                const lng = coords[1] + (Math.random() - 0.5) * 0.04;
-                const marker = L.marker([lat, lng]).addTo(leafletMap);
-                marker.bindPopup(`<b><a href="/contact/${c.id}">${c.name}</a></b><br>${c.city || ''} ${c.street || ''}<br>Status: ${c.status}`);
-                mapMarkers.push(marker);
+            let coords = cityCoords[cityKey];
+
+            // Jeśli miasto nie jest znane, przydziel stały punkt na mapie Polski w zależności od ID
+            if (!coords) {
+                const defaultLat = 52.0 + ((c.id * 17) % 200) / 100.0 - 1.0;
+                const defaultLng = 19.0 + ((c.id * 31) % 300) / 100.0 - 1.5;
+                coords = [defaultLat, defaultLng];
             }
+
+            const lat = coords[0] + (Math.sin(c.id) * 0.02);
+            const lng = coords[1] + (Math.cos(c.id) * 0.02);
+
+            const marker = L.marker([lat, lng]).addTo(leafletMap);
+            marker.bindPopup(`<b><a href="/contact/${c.id}">${c.name}</a></b><br>${c.city || 'Lokalizacja nieokreślona'} ${c.street || ''}<br>Status: ${c.status}`);
+            mapMarkers.push(marker);
         });
 
         setTimeout(() => leafletMap.invalidateSize(), 300);
@@ -577,6 +704,7 @@ function renderCalendar() {
         if (currentView === 'kanban') renderKanbanBoard(contacts);
         else if (currentView === 'map') renderMap(contacts);
         else renderTable(contacts);
+        restoreScrollPosition();
     }
 
     function fetchFilteredContacts() {
@@ -678,15 +806,21 @@ function renderCalendar() {
     // --- Obsługa zapamiętywania pozycji przewijania ---
     function addEventListenersToLinks(links) {
         links.forEach(link => {
-            link.addEventListener('click', function() { sessionStorage.setItem('scrollPosition', window.scrollY); });
+            link.addEventListener('click', function() { sessionStorage.setItem('crmScrollPosition', window.scrollY); });
         });
     }
-    window.addEventListener('pageshow', function(event) {
-        const savedScrollPosition = sessionStorage.getItem('scrollPosition');
-        if (savedScrollPosition) {
-            window.scrollTo(0, parseInt(savedScrollPosition, 10));
-            sessionStorage.removeItem('scrollPosition');
+
+    function restoreScrollPosition() {
+        const savedScrollPosition = sessionStorage.getItem('crmScrollPosition');
+        if (savedScrollPosition !== null && savedScrollPosition !== undefined) {
+            setTimeout(() => {
+                window.scrollTo({ top: parseInt(savedScrollPosition, 10), behavior: 'instant' });
+            }, 50);
         }
+    }
+
+    window.addEventListener('pageshow', function(event) {
+        restoreScrollPosition();
     });
 
     // --- Obsługa zmiany szerokości kolumn ---
