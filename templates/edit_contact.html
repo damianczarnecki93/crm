@@ -68,6 +68,44 @@
 
 <script src="{{ url_for('static', filename='js/app_helpers.js') }}"></script>
 <script>
+document.addEventListener('DOMContentLoaded', function() {
+    const editForm = document.querySelector('.edit-form-container form');
+    if (editForm) {
+        editForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(editForm);
+            const dataObj = {};
+            formData.forEach((value, key) => { dataObj[key] = value; });
+
+            showSpinner();
+            fetch(editForm.action, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                },
+                body: JSON.stringify(dataObj)
+            })
+            .then(res => res.json())
+            .then(data => {
+                hideSpinner();
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    setTimeout(() => {
+                        window.location.href = "{{ url_for('contacts.contact_detail', contact_id=contact.id) }}";
+                    }, 500);
+                } else {
+                    showToast(data.message || 'Błąd zapisywania zmian.', 'danger');
+                }
+            })
+            .catch(() => {
+                hideSpinner();
+                showToast('Błąd komunikacji z serwerem.', 'danger');
+            });
+        });
+    }
+});
+
 document.addEventListener('keydown', function(e) {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();

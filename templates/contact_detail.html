@@ -453,6 +453,9 @@
     <div class="detail-header">
         <h1><i class="fas fa-user-tie"></i> {{ contact.name }}</h1>
         <div class="header-actions">
+            <button type="button" id="toggle-dark-mode" class="button-secondary" title="Przełącz tryb ciemny/jasny">
+                <i class="fas fa-moon"></i>
+            </button>
             <a href="{{ url_for('contacts.edit_contact', contact_id=contact.id) }}" class="button-secondary">
                 <i class="fas fa-pencil-alt"></i> Edytuj
             </a>
@@ -522,7 +525,7 @@
             {% if contact.reminder_date %}
             <div class="reminder-set">
                 <span><i class="fas fa-clock"></i> Aktywne przypomnienie: <strong>{{ contact.reminder_date }}</strong></span>
-                <form action="{{ url_for('contacts.set_reminder', contact_id=contact.id) }}" method="POST" style="margin:0;">
+                <form id="clear-reminder-form" action="{{ url_for('contacts.set_reminder', contact_id=contact.id) }}" method="POST" style="margin:0;">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="reminder_date" value="">
                     <button type="submit" class="button-danger-text" title="Usuń przypomnienie">
@@ -536,7 +539,7 @@
                 <!-- Opcja 1: Konkretna data + szybki wybór -->
                 <div class="reminder-group">
                     <label for="reminder_date">Wybierz datę kalendarzową:</label>
-                    <form action="{{ url_for('contacts.set_reminder', contact_id=contact.id) }}" method="POST" class="input-inline-group">
+                    <form id="date-reminder-form" action="{{ url_for('contacts.set_reminder', contact_id=contact.id) }}" method="POST" class="input-inline-group">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="date" id="reminder_date" name="reminder_date">
                         <button type="submit">Zapisz</button>
@@ -558,7 +561,7 @@
                 <!-- Opcja 2: Dni od ostatniego kontaktu -->
                 <div class="reminder-group">
                     <label for="reminder_days">Dni od ostatniego kontaktu:</label>
-                    <form action="{{ url_for('contacts.set_reminder_days', contact_id=contact.id) }}" method="POST" class="input-inline-group">
+                    <form id="days-reminder-form" action="{{ url_for('contacts.set_reminder_days', contact_id=contact.id) }}" method="POST" class="input-inline-group">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="number" id="reminder_days" name="reminder_days" min="1" placeholder="np. 30">
                         <button type="submit">Ustaw</button>
@@ -568,6 +571,38 @@
         </div>
 
         <div class="history-section">
+            <h2><i class="fas fa-shopping-cart"></i> Historia Sprzedaży i Oferta</h2>
+
+            <div style="background: var(--secondary-bg); padding: 16px; border-radius: 8px; margin-bottom: 20px;">
+                <h3 style="margin-top:0; margin-bottom:10px; font-size:1rem;"><i class="fas fa-plus"></i> Dodaj Zakup / Transakcję</h3>
+                <form id="add-sale-form" action="{{ url_for('api.add_sale', contact_id=contact.id) }}" method="POST" style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 8px;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="text" name="product_name" placeholder="Nazwa produktu/usługi *" required style="padding:6px 10px; border-radius:6px; border:1px solid #cbd5e1;">
+                    <input type="number" step="0.01" name="amount" placeholder="Kwota (PLN) *" required style="padding:6px 10px; border-radius:6px; border:1px solid #cbd5e1;">
+                    <input type="date" name="sale_date" required style="padding:6px 10px; border-radius:6px; border:1px solid #cbd5e1;">
+                    <button type="submit" class="button-primary" style="grid-column: span 3; margin-top:4px;"><i class="fas fa-save"></i> Zapisz transakcję</button>
+                </form>
+            </div>
+
+            <div id="sales-list" style="margin-bottom: 20px;">
+                {% if sales %}
+                    <ul style="list-style: none; padding: 0; margin: 0;">
+                    {% for sale in sales %}
+                        <li style="display: flex; justify-content: space-between; padding: 8px 12px; background: #f8fafc; border-radius: 6px; margin-bottom: 6px; font-size:0.9rem;">
+                            <span><strong>{{ sale.product_name }}</strong> ({{ sale.sale_date }})</span>
+                            <span style="font-weight: 600; color: #16a34a;">{{ "%.2f"|format(sale.amount) }} PLN</span>
+                        </li>
+                    {% endfor %}
+                    </ul>
+                {% else %}
+                    <p id="no-sales-msg" style="color: var(--text-muted); text-align: center; font-size:0.9rem;">Brak historii sprzedaży dla tego kontaktu.</p>
+                {% endif %}
+            </div>
+
+            <button type="button" id="btn-generate-offer" class="button-primary full-width" style="margin-bottom: 24px; background-color: #059669;">
+                <i class="fas fa-file-invoice-dollar"></i> Generuj Propozycję Oferty na Podstawie Historii
+            </button>
+
             <h2><i class="fas fa-history"></i> Historia Kontaktu</h2>
             
             <div class="history-form">
@@ -590,7 +625,7 @@
                     </div>
                 </div>
 
-                <form action="{{ url_for('history.add_note', contact_id=contact.id) }}" method="POST">
+                <form id="add-note-form" action="{{ url_for('history.add_note', contact_id=contact.id) }}" method="POST">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <textarea name="note_text" rows="3" placeholder="Opisz interakcję..." required style="margin-bottom: 10px;"></textarea>
                     <button type="submit"><i class="fas fa-plus"></i> Dodaj do historii</button>
@@ -619,6 +654,8 @@
 
 <script src="{{ url_for('static', filename='js/app_helpers.js') }}"></script>
 <script>
+const contactId = {{ contact.id }};
+
 function insertTemplate(text) {
     const textarea = document.querySelector('textarea[name="note_text"]');
     if (textarea) {
@@ -626,6 +663,268 @@ function insertTemplate(text) {
         textarea.focus();
     }
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Dark Mode
+    const darkModeBtn = document.getElementById('toggle-dark-mode');
+    if (localStorage.getItem('crm_dark_theme') === 'enabled') {
+        document.body.classList.add('dark-theme');
+    }
+    if (darkModeBtn) {
+        darkModeBtn.addEventListener('click', () => {
+            document.body.classList.toggle('dark-theme');
+            if (document.body.classList.contains('dark-theme')) {
+                localStorage.setItem('crm_dark_theme', 'enabled');
+            } else {
+                localStorage.setItem('crm_dark_theme', 'disabled');
+            }
+        });
+    }
+
+    // Handling Date Reminder form
+    const dateReminderForm = document.getElementById('date-reminder-form');
+    if (dateReminderForm) {
+        dateReminderForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const dateVal = document.getElementById('reminder_date').value;
+            setReminderAsync(contactId, dateVal);
+        });
+    }
+
+    // Handling Clear Reminder form
+    const clearReminderForm = document.getElementById('clear-reminder-form');
+    if (clearReminderForm) {
+        clearReminderForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            setReminderAsync(contactId, '');
+        });
+    }
+
+    // Handling Days Reminder form
+    const daysReminderForm = document.getElementById('days-reminder-form');
+    if (daysReminderForm) {
+        daysReminderForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const daysVal = document.getElementById('reminder_days').value;
+            if (!daysVal) return;
+            setQuickDaysAsync(contactId, parseInt(daysVal, 10));
+        });
+    }
+
+    // Handling Add Note form
+    const addNoteForm = document.getElementById('add-note-form');
+    if (addNoteForm) {
+        const noteTextarea = addNoteForm.querySelector('textarea[name="note_text"]');
+        if (noteTextarea) {
+            noteTextarea.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    addNoteForm.requestSubmit();
+                }
+            });
+        }
+
+        addNoteForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const noteText = addNoteForm.querySelector('textarea[name="note_text"]').value.trim();
+            if (!noteText) return;
+
+            showSpinner();
+            fetch(addNoteForm.action, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                },
+                body: JSON.stringify({ note_text: noteText })
+            })
+            .then(res => res.json())
+            .then(data => {
+                hideSpinner();
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    addNoteForm.reset();
+
+                    const historyLog = document.querySelector('.history-log');
+                    const emptyMsg = historyLog.querySelector('p');
+                    if (emptyMsg && emptyMsg.innerText.includes('Brak historii')) {
+                        emptyMsg.remove();
+                    }
+
+                    const newEntry = document.createElement('div');
+                    newEntry.className = 'history-entry';
+                    newEntry.id = `history-entry-${data.note.id}`;
+                    newEntry.innerHTML = `
+                        <div class="history-content">
+                            <p class="history-date"><i class="far fa-calendar-alt"></i> ${data.note.date_short}</p>
+                            <p class="history-desc">${data.note.change_description}</p>
+                        </div>
+                        <form method="POST" action="/history/${data.note.id}/delete" class="delete-note-form" style="margin:0;">
+                            <input type="hidden" name="csrf_token" value="${getCsrfToken()}">
+                            <button type="submit" class="delete-btn-note" title="Usuń notatkę"><i class="fas fa-trash-alt"></i></button>
+                        </form>
+                    `;
+                    historyLog.prepend(newEntry);
+                    attachDeleteNoteEvent(newEntry.querySelector('.delete-note-form'));
+                } else {
+                    showToast(data.message || 'Wystąpił błąd.', 'danger');
+                }
+            })
+            .catch(() => {
+                hideSpinner();
+                showToast('Błąd komunikacji z serwerem.', 'danger');
+            });
+        });
+    }
+
+    // Handling Delete Note forms
+    function attachDeleteNoteEvent(form) {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            if (!confirm('Czy na pewno usunąć tę notatkę?')) return;
+
+            showSpinner();
+            fetch(form.action, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                }
+            })
+            .then(res => res.json())
+            .then(data => {
+                hideSpinner();
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    const entry = form.closest('.history-entry');
+                    if (entry) entry.remove();
+
+                    const historyLog = document.querySelector('.history-log');
+                    if (historyLog && historyLog.children.length === 0) {
+                        historyLog.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 20px 0;">Brak historii dla tego kontaktu.</p>';
+                    }
+                } else {
+                    showToast(data.message || 'Nie udało się usunąć notatki.', 'danger');
+                }
+            })
+            .catch(() => {
+                hideSpinner();
+                showToast('Błąd komunikacji z serwerem.', 'danger');
+            });
+        });
+    }
+
+    document.querySelectorAll('.history-log form').forEach(attachDeleteNoteEvent);
+
+    // Handling Add Sale form
+    const addSaleForm = document.getElementById('add-sale-form');
+    if (addSaleForm) {
+        addSaleForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(addSaleForm);
+            const dataObj = {};
+            formData.forEach((value, key) => { dataObj[key] = value; });
+
+            showSpinner();
+            fetch(addSaleForm.action, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                },
+                body: JSON.stringify(dataObj)
+            })
+            .then(res => res.json())
+            .then(data => {
+                hideSpinner();
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    addSaleForm.reset();
+
+                    const noSalesMsg = document.getElementById('no-sales-msg');
+                    if (noSalesMsg) noSalesMsg.remove();
+
+                    let salesList = document.querySelector('#sales-list ul');
+                    if (!salesList) {
+                        salesList = document.createElement('ul');
+                        salesList.style.cssText = 'list-style: none; padding: 0; margin: 0;';
+                        document.getElementById('sales-list').appendChild(salesList);
+                    }
+
+                    const li = document.createElement('li');
+                    li.style.cssText = 'display: flex; justify-content: space-between; padding: 8px 12px; background: #f8fafc; border-radius: 6px; margin-bottom: 6px; font-size:0.9rem;';
+                    li.innerHTML = `<span><strong>${data.sale.product_name}</strong> (${data.sale.sale_date})</span><span style="font-weight: 600; color: #16a34a;">${parseFloat(data.sale.amount).toFixed(2)} PLN</span>`;
+                    salesList.prepend(li);
+                } else {
+                    showToast(data.message || 'Wystąpił błąd.', 'danger');
+                }
+            })
+            .catch(() => {
+                hideSpinner();
+                showToast('Błąd komunikacji z serwerem.', 'danger');
+            });
+        });
+    }
+
+    // Offer Generator
+    const btnGenerateOffer = document.getElementById('btn-generate-offer');
+    if (btnGenerateOffer) {
+        btnGenerateOffer.addEventListener('click', function() {
+            const clientName = document.querySelector('.detail-header h1')?.innerText.trim() || 'Klient';
+            const salesItems = document.querySelectorAll('#sales-list li');
+
+            let itemsHtml = '';
+            if (salesItems.length > 0) {
+                salesItems.forEach(item => {
+                    itemsHtml += `<div style="display:flex; justify-content:space-between; padding:8px; border-bottom:1px solid #eee;">
+                        <span>${item.querySelector('span:first-child')?.innerHTML || ''}</span>
+                        <span>${item.querySelector('span:last-child')?.innerHTML || ''}</span>
+                    </div>`;
+                });
+            } else {
+                itemsHtml = '<p style="color:#666;">Brak wcześniejszych zakupów. Oferta standardowa.</p>';
+            }
+
+            const offerWin = window.open('', '_blank');
+            offerWin.document.write(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Propozycja Oferty - ${clientName}</title>
+                    <style>
+                        body { font-family: sans-serif; padding: 40px; color: #333; }
+                        .header { border-bottom: 2px solid #2563eb; padding-bottom: 15px; margin-bottom: 30px; }
+                        .title { font-size: 24px; font-weight: bold; color: #2563eb; }
+                        .section { margin-bottom: 25px; }
+                        .footer { margin-top: 50px; font-size: 12px; color: #777; border-top: 1px solid #ddd; padding-top: 10px; }
+                    </style>
+                </head>
+                <body>
+                    <div class="header">
+                        <div class="title">PROPOZYCJA OFERTY HANDLOWEJ</div>
+                        <p>Dla: <strong>${clientName}</strong> | Data wygenerowania: ${new Date().toISOString().split('T')[0]}</p>
+                    </div>
+                    <div class="section">
+                        <h3>Dedykowane Produkty / Usługi na Podstawie Historii Zakupów:</h3>
+                        ${itemsHtml}
+                    </div>
+                    <div class="section">
+                        <h3>Proponowany Pakiet Odnowienia / Rozszerzenia:</h3>
+                        <p style="background: #f0fdf4; padding: 15px; border-left: 4px solid #16a34a;">
+                            Sugerowany rabat partnerski: <strong>10% przy przedłużeniu na kolejne 12 miesięcy</strong>.
+                        </p>
+                    </div>
+                    <div class="footer">
+                        Wygenerowano automatycznie w systemie CRM.
+                    </div>
+                    <script>window.print();<\/script>
+                </body>
+                </html>
+            `);
+            offerWin.document.close();
+        });
+    }
+});
 
 document.addEventListener('keydown', function(e) {
     const activeElement = document.activeElement;

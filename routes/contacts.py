@@ -3,51 +3,69 @@ from io import TextIOWrapper
 from datetime import datetime, timezone, timedelta
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 
-from db import get_db_conn, get_filtered_contacts_from_db, validate_contact_form
+from db import get_db_conn, get_filtered_contacts_from_db, validate_contact_form, geocode_address
 
 contacts_bp = Blueprint('contacts', __name__)
 
 @contacts_bp.route('/add_contact', methods=['POST'])
 def add_contact():
-    errors = validate_contact_form(request.form)
+    is_json_req = request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest' or 'application/json' in request.headers.get('Accept', '')
+    data = request.json if request.is_json else request.form
+    errors = validate_contact_form(data)
     if errors:
+        if is_json_req:
+            return jsonify({'success': False, 'errors': errors, 'message': errors[0]}), 400
         for error in errors:
             flash(error, 'danger')
         return redirect(url_for('main.index'))
 
     form_keys = ['name', 'street', 'city', 'voivodeship', 'phone', 'email', 'nip', 'www', 'notes']
-    form_values = {k: request.form.get(k, '').strip() for k in form_keys}
+    form_values = {k: data.get(k, '').strip() if data.get(k) is not None else '' for k in form_keys}
     today_date = datetime.now(timezone.utc).date()
     
+    lat, lng = geocode_address(form_values['street'], form_values['city'], form_values['voivodeship'])
+
     with get_db_conn() as conn:
         cursor = conn.cursor()
+        # Automatyczne ustawienie przypomnienia na +7 dni od utworzenia
+        reminder_7d = today_date + timedelta(days=7)
         cursor.execute(
-            '''INSERT INTO contacts (name, street, city, voivodeship, phone, email, nip, www, notes, last_contact_date, status) 
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-            (*form_values.values(), today_date, 'nowy')
+            '''INSERT INTO contacts (name, street, city, voivodeship, phone, email, nip, www, notes, last_contact_date, status, reminder_date, latitude, longitude)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+            (*form_values.values(), today_date, 'nowy', reminder_7d, lat, lng)
         )
         contact_id = cursor.lastrowid
-        cursor.execute('INSERT INTO contact_history (contact_id, change_description) VALUES (?, ?)', (contact_id, 'Kontakt utworzony.'))
+        cursor.execute('INSERT INTO contact_history (contact_id, change_description) VALUES (?, ?)', (contact_id, 'Kontakt utworzony. Automatycznie ustawiono przypomnienie na +7 dni.'))
         conn.commit()
         
-    flash(f'Pomyślnie dodano kontakt: {form_values["name"]}', 'success')
+    msg = f'Pomyślnie dodano kontakt: {form_values["name"]}'
+    if is_json_req:
+        return jsonify({'success': True, 'message': msg, 'contact_id': contact_id})
+
+    flash(msg, 'success')
     return redirect(url_for('main.index'))
 
 
 @contacts_bp.route('/import_csv', methods=['POST'])
 def import_csv():
+    is_json_req = request.headers.get('X-Requested-With') == 'XMLHttpRequest' or 'application/json' in request.headers.get('Accept', '')
     file = request.files.get('csv_file')
     if not file or not file.filename.endswith('.csv'):
-        flash('Proszę wgrać prawidłowy plik .csv', 'warning')
+        msg = 'Proszę wgrać prawidłowy plik .csv'
+        if is_json_req:
+            return jsonify({'success': False, 'message': msg}), 400
+        flash(msg, 'warning')
         return redirect(url_for('main.index'))
         
-    csv_file = TextIOWrapper(file, encoding='utf-8')
-    csv_reader = csv.reader(csv_file, delimiter=';')
-    
-    try: 
+    try:
+        csv_file = TextIOWrapper(file, encoding='utf-8')
+        csv_reader = csv.reader(csv_file, delimiter=';')
         next(csv_reader, None)
     except Exception: 
-        flash('Bląd podczas odczytu pliku CSV lub plik jest pusty.', 'warning')
+        msg = 'Błąd podczas odczytu pliku CSV lub plik jest pusty.'
+        if is_json_req:
+            return jsonify({'success': False, 'message': msg}), 400
+        flash(msg, 'warning')
         return redirect(url_for('main.index'))
         
     count = 0
@@ -63,10 +81,11 @@ def import_csv():
                 if not data[0]:
                     continue
                     
+                lat, lng = geocode_address(data[1], data[2], data[3])
                 cursor.execute(
-                    '''INSERT INTO contacts (name, street, city, voivodeship, phone, email, nip, www, notes, last_contact_date, status) 
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                    (*data[:9], today_date, 'nowy')
+                    '''INSERT INTO contacts (name, street, city, voivodeship, phone, email, nip, www, notes, last_contact_date, status, latitude, longitude)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                    (*data[:9], today_date, 'nowy', lat, lng)
                 )
                 contact_id = cursor.lastrowid
                 
@@ -78,15 +97,23 @@ def import_csv():
         conn.commit()
         
     if count > 0: 
-        flash(f'Pomyślnie zaimportowano {count} kontaktów.', 'success')
+        msg = f'Pomyślnie zaimportowano {count} kontaktów.'
+        if is_json_req:
+            return jsonify({'success': True, 'message': msg, 'count': count})
+        flash(msg, 'success')
     else: 
-        flash('Nie zaimportowano żadnych kontaktów. Sprawdź format pliku.', 'warning')
+        msg = 'Nie zaimportowano żadnych kontaktów. Sprawdź format pliku.'
+        if is_json_req:
+            return jsonify({'success': False, 'message': msg}), 400
+        flash(msg, 'warning')
     return redirect(url_for('main.index'))
 
 
 @contacts_bp.route('/contact/<int:contact_id>/update_status', methods=['POST'])
 def update_status(contact_id):
-    new_status = request.json.get('status') if request.is_json else request.form.get('status')
+    data = request.json if request.is_json else request.form
+    new_status = data.get('status')
+    lost_reason = data.get('lost_reason', '').strip() if data else ''
     allowed_statuses = ['nowy', 'aktywny', 'kontakt', 'utracony', 'lojalny', 'nieaktywny']
     
     if not new_status or new_status not in allowed_statuses:
@@ -95,7 +122,10 @@ def update_status(contact_id):
     try:
         with get_db_conn() as conn:
             cursor = conn.cursor()
-            cursor.execute('UPDATE contacts SET status = ? WHERE id = ?', (new_status, contact_id))
+            if new_status == 'utracony' and lost_reason:
+                cursor.execute('UPDATE contacts SET status = ?, lost_reason = ? WHERE id = ?', (new_status, lost_reason, contact_id))
+            else:
+                cursor.execute('UPDATE contacts SET status = ? WHERE id = ?', (new_status, contact_id))
             if cursor.rowcount == 0:
                 return jsonify({'success': False, 'message': 'Kontakt nie istnieje'}), 404
             
@@ -120,24 +150,35 @@ def filter_contacts():
 
 @contacts_bp.route('/contact/<int:contact_id>/update', methods=['POST'])
 def update_contact(contact_id):
-    errors = validate_contact_form(request.form)
+    is_json_req = request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest' or 'application/json' in request.headers.get('Accept', '')
+    data = request.json if request.is_json else request.form
+    errors = validate_contact_form(data)
     if errors:
+        if is_json_req:
+            return jsonify({'success': False, 'errors': errors, 'message': errors[0]}), 400
         for error in errors:
             flash(error, 'danger')
         return redirect(url_for('contacts.edit_contact', contact_id=contact_id))
 
     form_keys = ['name', 'street', 'city', 'voivodeship', 'phone', 'email', 'nip', 'www', 'notes']
-    form_values = [request.form.get(k, '').strip() for k in form_keys]
-    
+    form_dict = {k: data.get(k, '').strip() if data.get(k) is not None else '' for k in form_keys}
+    form_values = list(form_dict.values())
+    lat, lng = geocode_address(form_dict['street'], form_dict['city'], form_dict['voivodeship'])
+
     with get_db_conn() as conn:
         conn.execute(
             '''UPDATE contacts 
-               SET name = ?, street = ?, city = ?, voivodeship = ?, phone = ?, email = ?, nip = ?, www = ?, notes = ? 
+               SET name = ?, street = ?, city = ?, voivodeship = ?, phone = ?, email = ?, nip = ?, www = ?, notes = ?, latitude = ?, longitude = ?
                WHERE id = ?''',
-            (*form_values, contact_id)
+            (*form_values, lat, lng, contact_id)
         )
         conn.commit()
-    flash('Dane kontaktu zostały zaktualizowane.', 'success')
+
+    msg = 'Dane kontaktu zostały zaktualizowane.'
+    if is_json_req:
+        return jsonify({'success': True, 'message': msg})
+
+    flash(msg, 'success')
     return redirect(url_for('contacts.contact_detail', contact_id=contact_id))
 
 
@@ -146,11 +187,12 @@ def contact_detail(contact_id):
     with get_db_conn() as conn:
         contact = conn.execute('SELECT * FROM contacts WHERE id = ?', (contact_id,)).fetchone()
         history = conn.execute('SELECT * FROM contact_history WHERE contact_id = ? ORDER BY change_date DESC', (contact_id,)).fetchall()
+        sales = conn.execute('SELECT * FROM sales_history WHERE contact_id = ? ORDER BY sale_date DESC', (contact_id,)).fetchall()
     
     if contact is None: 
         flash('Kontakt nie istnieje.', 'warning')
         return redirect(url_for('main.index'))
-    return render_template('contact_detail.html', contact=contact, history=history)
+    return render_template('contact_detail.html', contact=contact, history=history, sales=sales)
 
 
 @contacts_bp.route('/contact/<int:contact_id>/edit')
@@ -165,10 +207,16 @@ def edit_contact(contact_id):
 
 @contacts_bp.route('/contact/<int:contact_id>/delete', methods=['POST'])
 def delete_contact(contact_id):
+    is_json_req = request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest' or 'application/json' in request.headers.get('Accept', '')
     with get_db_conn() as conn:
         conn.execute('DELETE FROM contacts WHERE id = ?', (contact_id,))
         conn.commit()
-    flash('Kontakt został trwale usunięty.', 'success')
+
+    msg = 'Kontakt został trwale usunięty.'
+    if is_json_req:
+        return jsonify({'success': True, 'message': msg})
+
+    flash(msg, 'success')
     return redirect(url_for('main.index'))
 
 

@@ -1,4 +1,20 @@
 document.addEventListener('DOMContentLoaded', function() {
+    // --- Dark Mode ---
+    const darkModeBtn = document.getElementById('toggle-dark-mode');
+    if (localStorage.getItem('crm_dark_theme') === 'enabled') {
+        document.body.classList.add('dark-theme');
+    }
+    if (darkModeBtn) {
+        darkModeBtn.addEventListener('click', () => {
+            document.body.classList.toggle('dark-theme');
+            if (document.body.classList.contains('dark-theme')) {
+                localStorage.setItem('crm_dark_theme', 'enabled');
+            } else {
+                localStorage.setItem('crm_dark_theme', 'disabled');
+            }
+        });
+    }
+
     // --- Przejęcie kontroli nad przywracaniem przewijania ---
     if ('scrollRestoration' in history) {
         history.scrollRestoration = 'manual';
@@ -17,6 +33,31 @@ document.addEventListener('DOMContentLoaded', function() {
     let searchTimeout;
     let calendar = null;
 
+    // --- Refresh Stats Function ---
+    function refreshStats() {
+        fetch('/api/stats')
+            .then(res => res.json())
+            .then(stats => {
+                const map = {
+                    total_count: '.stat-card:nth-child(1) .stat-value',
+                    reminders_today: '.stat-card:nth-child(2) .stat-value',
+                    reminders_overdue: '.stat-card:nth-child(3) .stat-value',
+                    status_nowy: '.stat-card:nth-child(4) .stat-value',
+                    status_aktywny: '.stat-card:nth-child(5) .stat-value',
+                    status_kontakt: '.stat-card:nth-child(6) .stat-value',
+                    status_lojalny: '.stat-card:nth-child(7) .stat-value',
+                    status_utracony: '.stat-card:nth-child(8) .stat-value',
+                    status_nieaktywny: '.stat-card:nth-child(9) .stat-value'
+                };
+                for (const key in map) {
+                    const el = document.querySelector(map[key]);
+                    if (el && stats[key] !== undefined) {
+                        el.innerText = stats[key];
+                    }
+                }
+            }).catch(err => console.error(err));
+    }
+
     // --- Obsługa okna dialogowego (modal) ---
     if (fab && modal) {
         fab.addEventListener('click', () => { modal.classList.remove('hidden'); });
@@ -27,6 +68,295 @@ document.addEventListener('DOMContentLoaded', function() {
     if (modal) {
         modal.addEventListener('click', (e) => {
             if (e.target === modal) { modal.classList.add('hidden'); }
+        });
+    }
+
+    // --- Moduł Uzupełniania Brakujących Danych (Wizard) ---
+    const wizardModal = document.getElementById('missing-data-modal');
+    const closeWizardBtn = document.getElementById('close-missing-data-modal');
+    const openWizardBtn = document.getElementById('btn-missing-data-wizard');
+    const wizardForm = document.getElementById('wizard-form');
+    const wizardSkipBtn = document.getElementById('wizard-skip-btn');
+
+    let incompleteContacts = [];
+    let currentWizardIndex = 0;
+
+    if (closeWizardBtn && wizardModal) {
+        closeWizardBtn.addEventListener('click', () => wizardModal.classList.add('hidden'));
+        wizardModal.addEventListener('click', (e) => {
+            if (e.target === wizardModal) wizardModal.classList.add('hidden');
+        });
+    }
+
+    function loadWizardContact() {
+        if (!incompleteContacts || currentWizardIndex >= incompleteContacts.length) {
+            wizardModal.classList.add('hidden');
+            showToast('Wszystkie zaległe kontakty zostały zweryfikowane!', 'success');
+            fetchFilteredContacts();
+            refreshStats();
+            return;
+        }
+
+        const contact = incompleteContacts[currentWizardIndex];
+        document.getElementById('wizard-contact-id').value = contact.id;
+        document.getElementById('wizard-contact-title').innerText = `${contact.name} (Klient ${currentWizardIndex + 1} z ${incompleteContacts.length})`;
+        document.getElementById('wizard-progress').innerText = `Postęp: ${currentWizardIndex + 1} / ${incompleteContacts.length}`;
+        document.getElementById('wizard-phone').value = contact.phone || '';
+        document.getElementById('wizard-email').value = contact.email || '';
+        document.getElementById('wizard-nip').value = contact.nip || '';
+        document.getElementById('wizard-city').value = contact.city || '';
+    }
+
+    if (openWizardBtn) {
+        openWizardBtn.addEventListener('click', function() {
+            showSpinner();
+            fetch('/filter')
+                .then(res => res.json())
+                .then(contacts => {
+                    hideSpinner();
+                    incompleteContacts = contacts.filter(c => !c.phone || !c.email || !c.nip || !c.city);
+                    if (incompleteContacts.length === 0) {
+                        showToast('Świetnie! Wszyscy klienci posiadają kompletne dane.', 'success');
+                        return;
+                    }
+                    currentWizardIndex = 0;
+                    wizardModal.classList.remove('hidden');
+                    loadWizardContact();
+                })
+                .catch(() => {
+                    hideSpinner();
+                    showToast('Błąd pobierania listy kontaktów.', 'danger');
+                });
+        });
+    }
+
+    if (wizardSkipBtn) {
+        wizardSkipBtn.addEventListener('click', function() {
+            currentWizardIndex++;
+            loadWizardContact();
+        });
+    }
+
+    if (wizardForm) {
+        wizardForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const contactId = document.getElementById('wizard-contact-id').value;
+            const contact = incompleteContacts[currentWizardIndex];
+
+            const updatedData = {
+                name: contact.name,
+                street: contact.street || '',
+                city: document.getElementById('wizard-city').value.trim(),
+                voivodeship: contact.voivodeship || '',
+                phone: document.getElementById('wizard-phone').value.trim(),
+                email: document.getElementById('wizard-email').value.trim(),
+                nip: document.getElementById('wizard-nip').value.trim(),
+                www: contact.www || '',
+                notes: contact.notes || ''
+            };
+
+            showSpinner();
+            fetch(`/contact/${contactId}/update`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                },
+                body: JSON.stringify(updatedData)
+            })
+            .then(res => res.json())
+            .then(data => {
+                hideSpinner();
+                if (data.success) {
+                    showToast('Zaktualizowano dane kontaktu!', 'success');
+                    currentWizardIndex++;
+                    loadWizardContact();
+                } else {
+                    showToast(data.message || 'Błąd aktualizacji.', 'danger');
+                }
+            })
+            .catch(() => {
+                hideSpinner();
+                showToast('Błąd komunikacji z serwerem.', 'danger');
+            });
+        });
+    }
+
+    // --- Obsługa modala powodu utraty ---
+    const lostReasonModal = document.getElementById('lost-reason-modal');
+    const closeLostReasonBtn = document.getElementById('close-lost-reason-modal');
+    const lostReasonForm = document.getElementById('lost-reason-form');
+
+    if (closeLostReasonBtn && lostReasonModal) {
+        closeLostReasonBtn.addEventListener('click', () => lostReasonModal.classList.add('hidden'));
+        lostReasonModal.addEventListener('click', (e) => {
+            if (e.target === lostReasonModal) lostReasonModal.classList.add('hidden');
+        });
+    }
+
+    if (lostReasonForm) {
+        lostReasonForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const contactId = document.getElementById('lost-reason-contact-id').value;
+            const reason = document.getElementById('lost_reason_select').value;
+
+            showSpinner();
+            fetch(`/contact/${contactId}/update_status`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                },
+                body: JSON.stringify({ status: 'utracony', lost_reason: reason })
+            })
+            .then(res => res.json())
+            .then(data => {
+                hideSpinner();
+                if (data.success) {
+                    showToast('Zmieniono status na Utracony z powodem: ' + reason, 'success');
+                    lostReasonModal.classList.add('hidden');
+                    fetchFilteredContacts();
+                    refreshStats();
+                } else {
+                    showToast(data.message || 'Błąd zmiany statusu.', 'danger');
+                }
+            })
+            .catch(() => {
+                hideSpinner();
+                showToast('Błąd komunikacji z serwerem.', 'danger');
+            });
+        });
+    }
+
+    // --- Obsługa modala szybkiej notatki ---
+    const quickNoteModal = document.getElementById('quick-note-modal');
+    const closeQuickNoteBtn = document.getElementById('close-quick-note-modal');
+    const quickNoteForm = document.getElementById('quick-note-form');
+
+    if (closeQuickNoteBtn && quickNoteModal) {
+        closeQuickNoteBtn.addEventListener('click', () => quickNoteModal.classList.add('hidden'));
+        quickNoteModal.addEventListener('click', (e) => {
+            if (e.target === quickNoteModal) quickNoteModal.classList.add('hidden');
+        });
+    }
+
+    const quickNoteTextarea = document.getElementById('quick-note-text');
+    if (quickNoteTextarea && quickNoteForm) {
+        quickNoteTextarea.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                quickNoteForm.requestSubmit();
+            }
+        });
+    }
+
+    if (quickNoteForm) {
+        quickNoteForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const contactId = document.getElementById('quick-note-contact-id').value;
+            const noteText = document.getElementById('quick-note-text').value.trim();
+            if (!noteText) return;
+
+            showSpinner();
+            fetch(`/contact/${contactId}/add_note`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                },
+                body: JSON.stringify({ note_text: noteText })
+            })
+            .then(res => res.json())
+            .then(data => {
+                hideSpinner();
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    quickNoteModal.classList.add('hidden');
+                    document.getElementById('quick-note-text').value = '';
+                    fetchFilteredContacts();
+                    refreshStats();
+                } else {
+                    showToast(data.message || 'Błąd zapisywania notatki.', 'danger');
+                }
+            })
+            .catch(() => {
+                hideSpinner();
+                showToast('Błąd komunikacji z serwerem.', 'danger');
+            });
+        });
+    }
+
+    // --- Obsługa AJAX formularza dodawania kontaktu ---
+    const addContactForm = document.querySelector('#add-modal form.form-grid');
+    if (addContactForm) {
+        addContactForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(addContactForm);
+            const dataObj = {};
+            formData.forEach((value, key) => { dataObj[key] = value; });
+
+            showSpinner();
+            fetch(addContactForm.action, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                },
+                body: JSON.stringify(dataObj)
+            })
+            .then(res => res.json())
+            .then(data => {
+                hideSpinner();
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    modal.classList.add('hidden');
+                    addContactForm.reset();
+                    fetchFilteredContacts();
+                    refreshStats();
+                } else {
+                    showToast(data.message || 'Wystąpił błąd formularza.', 'danger');
+                }
+            })
+            .catch(() => {
+                hideSpinner();
+                showToast('Błąd serwera podczas dodawania kontaktu.', 'danger');
+            });
+        });
+    }
+
+    // --- Obsługa AJAX importu CSV ---
+    const importCsvForm = document.querySelector('#add-modal form[action*="import_csv"]');
+    if (importCsvForm) {
+        importCsvForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(importCsvForm);
+
+            showSpinner();
+            fetch(importCsvForm.action, {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRFToken': getCsrfToken()
+                },
+                body: formData
+            })
+            .then(res => res.json())
+            .then(data => {
+                hideSpinner();
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    modal.classList.add('hidden');
+                    importCsvForm.reset();
+                    fetchFilteredContacts();
+                    refreshStats();
+                } else {
+                    showToast(data.message || 'Błąd podczas importu CSV.', 'danger');
+                }
+            })
+            .catch(() => {
+                hideSpinner();
+                showToast('Błąd wysyłania pliku CSV.', 'danger');
+            });
         });
     }
 
@@ -45,12 +375,19 @@ document.addEventListener('DOMContentLoaded', function() {
     function addEventListenersToRows(rows) {
         rows.forEach(row => {
             row.addEventListener('click', function(event) {
-                if (event.target.tagName === 'A' || event.target.closest('a')) return;
+                if (event.target.tagName === 'A' || event.target.closest('a') || event.target.tagName === 'BUTTON' || event.target.closest('button')) return;
                 const contactId = this.dataset.contactId;
                 let currentStatus = this.dataset.currentStatus;
                 const currentIndex = statuses.indexOf(currentStatus);
                 const nextIndex = (currentIndex + 1) % statuses.length;
                 const newStatus = statuses[nextIndex];
+
+                if (newStatus === 'utracony') {
+                    document.getElementById('lost-reason-contact-id').value = contactId;
+                    document.getElementById('lost-reason-modal')?.classList.remove('hidden');
+                    return;
+                }
+
                 fetch(`/contact/${contactId}/update_status`, {
                     method: 'POST',
                     headers: { 
@@ -69,6 +406,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             iconSpan.innerHTML = getStatusIconHTML(newStatus);
                             iconSpan.title = `Status: ${newStatus}`;
                         }
+                        refreshStats();
                     }
                 });
             });
@@ -80,9 +418,8 @@ function renderTable(contacts) {
     if (!tableBody) return;
     tableBody.innerHTML = '';
 
-    // POPRAWKA: colspan musi wynosić 12, bo dodaliśmy kolumnę statusu
     if (contacts.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="12">Brak kontaktów pasujących do kryteriów.</td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="13">Brak kontaktów pasujących do kryteriów.</td></tr>';
         return;
     }
 
@@ -96,10 +433,15 @@ function renderTable(contacts) {
         row.className = `status-${contact.status} ${hasReminder ? 'has-reminder' : ''} ${isOverdue ? 'reminder-overdue' : ''}`;
         row.dataset.contactId = contact.id;
         row.dataset.currentStatus = contact.status;
+        row.dataset.name = contact.name || '';
+        row.dataset.phone = contact.phone || '';
+        row.dataset.email = contact.email || '';
+        row.dataset.nip = contact.nip || '';
+        row.dataset.city = contact.city || '';
+        row.dataset.notes = contact.notes || '';
 
         const lastNoteDate = contact.last_note_date ? contact.last_note_date.split(' ')[0] : '';
 
-        // KOLEJNOŚĆ: Status jest teraz pierwszy
         row.innerHTML = `
             <td class="col-status">
                 <span class="status-icon" title="Status: ${contact.status}">${getStatusIconHTML(contact.status)}</span>
@@ -119,7 +461,30 @@ function renderTable(contacts) {
             <td class="col-last_note last-note" title="${contact.last_note ? `${lastNoteDate}: ${contact.last_note}` : ''}">
                 ${contact.last_note ? `<span class="note-date">${lastNoteDate}</span>${contact.last_note}` : 'Brak'}
             </td>
+            <td class="col-score">
+                <span style="font-weight: bold; color: ${contact.lead_score >= 50 ? '#16a34a' : '#d97706'};">
+                    ${contact.lead_score || 0} ${contact.lead_score >= 70 ? '🔥' : ''}
+                </span>
+            </td>
+            <td class="col-actions">
+                <button type="button" class="btn-quick-note button-secondary" title="Dodaj notatkę" style="padding: 2px 8px; font-size: 0.8rem;">
+                    <i class="fas fa-plus"></i>
+                </button>
+            </td>
         `;
+
+        const quickNoteBtn = row.querySelector('.btn-quick-note');
+        if (quickNoteBtn) {
+            quickNoteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                document.getElementById('quick-note-contact-id').value = contact.id;
+                document.getElementById('quick-note-contact-name').innerText = contact.name || '';
+                document.getElementById('quick-note-text').value = '';
+                document.getElementById('quick-note-modal')?.classList.remove('hidden');
+                document.getElementById('quick-note-text')?.focus();
+            });
+        }
+
         tableBody.appendChild(row);
     });
 
@@ -194,31 +559,183 @@ function renderCalendar() {
     calendar.render();
 }
 
+    // --- Mapa MapLibre GL JS ---
+    let maplibreMap = null;
+    let mapMarkers = [];
+
+    const maplibreStyle = {
+        'version': 8,
+        'sources': {
+            'osm-tiles': {
+                'type': 'raster',
+                'tiles': [
+                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
+                ],
+                'tileSize': 256,
+                'attribution': '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }
+        },
+        'layers': [
+            {
+                'id': 'osm-tiles-layer',
+                'type': 'raster',
+                'source': 'osm-tiles',
+                'minzoom': 0,
+                'maxzoom': 19
+            }
+        ]
+    };
+
+    function renderMap(contacts) {
+        const mapView = document.getElementById('map-view');
+        if (!mapView || typeof maplibregl === 'undefined') return;
+
+        if (!maplibreMap) {
+            maplibreMap = new maplibregl.Map({
+                container: 'maplibre-map',
+                style: maplibreStyle,
+                center: [19.4803, 52.0693],
+                zoom: 5.5
+            });
+            maplibreMap.addControl(new maplibregl.NavigationControl());
+        }
+
+        mapMarkers.forEach(m => m.remove());
+        mapMarkers = [];
+
+        const validContacts = contacts.filter(c => c.latitude !== null && c.longitude !== null && !isNaN(c.latitude) && !isNaN(c.longitude));
+        const coordCounts = {};
+        const bounds = new maplibregl.LngLatBounds();
+
+        validContacts.forEach((c) => {
+            const key = `${c.latitude.toFixed(4)},${c.longitude.toFixed(4)}`;
+            const count = coordCounts[key] || 0;
+            coordCounts[key] = count + 1;
+
+            let finalLat = c.latitude;
+            let finalLng = c.longitude;
+
+            if (count > 0) {
+                const angle = count * 1.2;
+                const distance = 0.002 * Math.sqrt(count);
+                finalLat += distance * Math.cos(angle);
+                finalLng += distance * Math.sin(angle);
+            }
+
+            bounds.extend([finalLng, finalLat]);
+
+            const locationText = `${c.city || ''} ${c.street || ''}`.trim() || 'Brak dokładnego adresu';
+
+            const popup = new maplibregl.Popup({ offset: 25 }).setHTML(`
+                <div style="font-family: var(--font-family); font-size: 0.9rem;">
+                    <strong><a href="/contact/${c.id}" style="color: var(--primary-color); font-weight: 600;">${c.name}</a></strong><br>
+                    <span style="color: #666;"><i class="fas fa-map-marker-alt"></i> ${locationText}</span><br>
+                    <span style="display: inline-block; margin-top: 4px; padding: 2px 6px; border-radius: 4px; background: #e0f2fe; color: #0369a1; font-size: 0.75rem;">Status: ${c.status}</span>
+                </div>
+            `);
+
+            const marker = new maplibregl.Marker({ color: '#2563eb' })
+                .setLngLat([finalLng, finalLat])
+                .setPopup(popup)
+                .addTo(maplibreMap);
+
+            mapMarkers.push(marker);
+        });
+
+        if (validContacts.length > 0) {
+            maplibreMap.fitBounds(bounds, { padding: 40, maxZoom: 14 });
+        }
+
+        setTimeout(() => maplibreMap.resize(), 300);
+    }
+
+    // --- Powiadomienia ---
+    function checkNotifications() {
+        fetch('/api/reminders')
+            .then(res => res.json())
+            .then(reminders => {
+                const badge = document.getElementById('notification-badge');
+                const list = document.getElementById('notification-list');
+                const today = new Date().toISOString().split('T')[0];
+
+                const activeReminders = reminders.filter(r => r.start <= today);
+                if (badge) {
+                    if (activeReminders.length > 0) {
+                        badge.innerText = activeReminders.length;
+                        badge.style.display = 'inline-block';
+                    } else {
+                        badge.style.display = 'none';
+                    }
+                }
+
+                if (list) {
+                    if (activeReminders.length === 0) {
+                        list.innerHTML = 'Brak oczekujących przypomnień.';
+                    } else {
+                        list.innerHTML = activeReminders.map(r => `
+                            <div style="padding: 6px 0; border-bottom: 1px solid var(--border-color);">
+                                <a href="${r.url}" style="font-weight: bold; color: var(--primary-color);">${r.title}</a>
+                                <div style="font-size: 0.75rem; color: var(--text-muted);">${r.start}</div>
+                            </div>
+                        `).join('');
+                    }
+                }
+
+                // Powiadomienia przeglądarkowe
+                if (activeReminders.length > 0 && Notification.permission === 'granted') {
+                    new Notification('CRM Przypomnienia', {
+                        body: `Masz ${activeReminders.length} oczekujących przypomnień na dziś!`,
+                        icon: '/favicon.ico'
+                    });
+                }
+            });
+    }
+
+    if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+        Notification.requestPermission();
+    }
+
+    const bell = document.getElementById('notification-bell');
+    const dropdown = document.getElementById('notification-dropdown');
+    if (bell && dropdown) {
+        bell.addEventListener('click', (e) => {
+            e.stopPropagation();
+            dropdown.classList.toggle('hidden');
+        });
+        document.addEventListener('click', () => dropdown.classList.add('hidden'));
+    }
+
+    checkNotifications();
+
     // --- Logika dynamicznego odświeżania i przełączania widoków ---
     const tableView = document.getElementById('table-view');
     const kanbanView = document.getElementById('kanban-view');
     const calendarView = document.getElementById('calendar-view');
+    const mapView = document.getElementById('map-view');
     const tableBtn = document.getElementById('view-btn-table');
     const kanbanBtn = document.getElementById('view-btn-kanban');
     const calendarBtn = document.getElementById('view-btn-calendar');
+    const mapBtn = document.getElementById('view-btn-map');
 
     function switchView(view) {
-        tableView.classList.add('hidden');
-        kanbanView.classList.add('hidden');
-        calendarView.classList.add('hidden');
-        [tableBtn, kanbanBtn, calendarBtn].forEach(b => b.classList.remove('active'));
+        [tableView, kanbanView, calendarView, mapView].forEach(v => v?.classList.add('hidden'));
+        [tableBtn, kanbanBtn, calendarBtn, mapBtn].forEach(b => b?.classList.remove('active'));
         localStorage.setItem('crm_view', view);
         if (view === 'kanban') {
-            kanbanView.classList.remove('hidden');
-            kanbanBtn.classList.add('active');
+            kanbanView?.classList.remove('hidden');
+            kanbanBtn?.classList.add('active');
             fetchFilteredContacts();
         } else if (view === 'calendar') {
-            calendarView.classList.remove('hidden');
-            calendarBtn.classList.add('active');
+            calendarView?.classList.remove('hidden');
+            calendarBtn?.classList.add('active');
             renderCalendar();
+        } else if (view === 'map') {
+            mapView?.classList.remove('hidden');
+            mapBtn?.classList.add('active');
+            fetchFilteredContacts();
         } else {
-            tableView.classList.remove('hidden');
-            tableBtn.classList.add('active');
+            tableView?.classList.remove('hidden');
+            tableBtn?.classList.add('active');
             fetchFilteredContacts();
         }
     }
@@ -226,7 +743,9 @@ function renderCalendar() {
     function updateView(contacts) {
         const currentView = localStorage.getItem('crm_view') || 'table';
         if (currentView === 'kanban') renderKanbanBoard(contacts);
+        else if (currentView === 'map') renderMap(contacts);
         else renderTable(contacts);
+        restoreScrollPosition();
     }
 
     function fetchFilteredContacts() {
@@ -289,19 +808,22 @@ function renderCalendar() {
         link.addEventListener('click', (e) => { e.preventDefault(); applySort(link.dataset.sort); });
     });
     
-    // --- Obsługa paneli filtrów i kolumn ---
-    const toggleAdvancedBtn = document.getElementById('toggle-advanced-filters');
-    const advancedFilters = document.getElementById('advanced-filters');
-    const toggleColumnsBtn = document.getElementById('toggle-column-selector');
-    const columnSelector = document.getElementById('column-selector');
-    const currentUrlParams = new URLSearchParams(window.location.search);
-    if (toggleAdvancedBtn) {
-        toggleAdvancedBtn.addEventListener('click', () => { advancedFilters.classList.toggle('hidden'); });
-        if (currentUrlParams.get('filter_city') || currentUrlParams.get('filter_status')) {
-            advancedFilters.classList.remove('hidden');
-        }
+    // --- Obsługa menu Hamburgera ---
+    const hamburgerBtn = document.getElementById('hamburger-menu-btn');
+    const hamburgerDropdown = document.getElementById('hamburger-dropdown');
+
+    if (hamburgerBtn && hamburgerDropdown) {
+        hamburgerBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            hamburgerDropdown.classList.toggle('hidden');
+        });
+        hamburgerDropdown.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+        document.addEventListener('click', () => {
+            hamburgerDropdown.classList.add('hidden');
+        });
     }
-    if (toggleColumnsBtn) { toggleColumnsBtn.addEventListener('click', () => { columnSelector.classList.toggle('hidden'); }); }
 
     // --- Obsługa widoczności kolumn ---
     const columnCheckboxes = document.querySelectorAll('#column-selector input[type="checkbox"]');
@@ -328,15 +850,21 @@ function renderCalendar() {
     // --- Obsługa zapamiętywania pozycji przewijania ---
     function addEventListenersToLinks(links) {
         links.forEach(link => {
-            link.addEventListener('click', function() { sessionStorage.setItem('scrollPosition', window.scrollY); });
+            link.addEventListener('click', function() { sessionStorage.setItem('crmScrollPosition', window.scrollY); });
         });
     }
-    window.addEventListener('pageshow', function(event) {
-        const savedScrollPosition = sessionStorage.getItem('scrollPosition');
-        if (savedScrollPosition) {
-            window.scrollTo(0, parseInt(savedScrollPosition, 10));
-            sessionStorage.removeItem('scrollPosition');
+
+    function restoreScrollPosition() {
+        const savedScrollPosition = sessionStorage.getItem('crmScrollPosition');
+        if (savedScrollPosition !== null && savedScrollPosition !== undefined) {
+            setTimeout(() => {
+                window.scrollTo({ top: parseInt(savedScrollPosition, 10), behavior: 'instant' });
+            }, 50);
         }
+    }
+
+    window.addEventListener('pageshow', function(event) {
+        restoreScrollPosition();
     });
 
     // --- Obsługa zmiany szerokości kolumn ---
@@ -391,6 +919,7 @@ function renderCalendar() {
         tableBtn.addEventListener('click', () => switchView('table'));
         kanbanBtn.addEventListener('click', () => switchView('kanban'));
         calendarBtn.addEventListener('click', () => switchView('calendar'));
+        if (mapBtn) mapBtn.addEventListener('click', () => switchView('map'));
         switchView(savedView);
     } else {
         fetchFilteredContacts();

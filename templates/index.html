@@ -10,6 +10,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
     <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js'></script>
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.1.2/dist/maplibre-gl.css" />
+    <script src="https://unpkg.com/maplibre-gl@4.1.2/dist/maplibre-gl.js"></script>
 </head>
 
 <body>
@@ -131,52 +133,93 @@
                         <button type="button" id="view-btn-table" class="view-btn active" title="Tabela (1)"><i class="fas fa-table"></i></button>
                         <button type="button" id="view-btn-kanban" class="view-btn" title="Kanban (2)"><i class="fas fa-th-large"></i></button>
                         <button type="button" id="view-btn-calendar" class="view-btn" title="Kalendarz (3)"><i class="fas fa-calendar-alt"></i></button>
+                        <button type="button" id="view-btn-map" class="view-btn" title="Mapa (4)"><i class="fas fa-map-marked-alt"></i></button>
                     </div>
 
-                    <div style="display: flex; gap: 8px;">
+                    <!-- Dzwonek Powiadomień -->
+                    <div class="notification-wrapper" style="position: relative;">
+                        <button type="button" id="notification-bell" class="button-secondary" title="Powiadomienia" style="position: relative;">
+                            <i class="fas fa-bell"></i>
+                            <span id="notification-badge" style="position: absolute; top: -5px; right: -5px; background: #ef4444; color: white; border-radius: 50%; padding: 2px 6px; font-size: 0.7rem; font-weight: bold; display: none;">0</span>
+                        </button>
+                        <div id="notification-dropdown" class="hidden" style="position: absolute; right: 0; top: 40px; width: 300px; background: var(--bg-card, #ffffff); border: 1px solid var(--border-color); border-radius: 8px; box-shadow: var(--card-shadow); z-index: 100; padding: 12px;">
+                            <h4 style="margin: 0 0 8px 0; font-size: 0.9rem;"><i class="fas fa-bell"></i> Przypomnienia</h4>
+                            <div id="notification-list" style="max-height: 200px; overflow-y: auto; font-size: 0.85rem;">
+                                Brak nowych przypomnień.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 8px; position: relative;">
+                        <button type="button" id="toggle-dark-mode" class="button-secondary" title="Przełącz tryb ciemny/jasny">
+                            <i class="fas fa-moon"></i>
+                        </button>
                         <a href="{{ url_for('api.export_csv') }}" id="export-btn" class="button-secondary" title="Eksportuj do CSV">
                             <i class="fas fa-file-download"></i> CSV
                         </a>
-                        <button type="button" id="toggle-advanced-filters" class="button-secondary" title="Filtry zaawansowane">
-                            <i class="fas fa-filter"></i>
+
+                        <!-- Hamburger Menu Button -->
+                        <button type="button" id="hamburger-menu-btn" class="button-secondary" title="Opcje i narzędzia">
+                            <i class="fas fa-bars"></i> Menu
                         </button>
-                        <button type="button" id="toggle-column-selector" class="button-secondary" title="Wybierz kolumny">
-                            <i class="fas fa-columns"></i>
-                        </button>
-                    </div>
-                </div>
-                
-                <div id="advanced-filters" class="hidden" style="margin-top: 8px;">
-                    <div class="filter-group">
-                        <label for="filter_city">Miasto:</label>
-                        <input type="text" id="filter_city" name="filter_city" value="{{ filter_city or '' }}" placeholder="np. Warszawa">
-                    </div>
-                    <div class="filter-group">
-                        <label for="filter_status">Status:</label>
-                        <select id="filter_status" name="filter_status">
-                            <option value="">-- Każdy --</option>
-                            <option value="nowy" {% if filter_status == 'nowy' %}selected{% endif %}>Nowy</option>
-                            <option value="aktywny" {% if filter_status == 'aktywny' %}selected{% endif %}>Aktywny</option>
-                            <option value="kontakt" {% if filter_status == 'kontakt' %}selected{% endif %}>Kontakt</option>
-                            <option value="utracony" {% if filter_status == 'utracony' %}selected{% endif %}>Utracony</option>
-                            <option value="lojalny" {% if filter_status == 'lojalny' %}selected{% endif %}>Lojalny</option>
-                            <option value="nieaktywny" {% if filter_status == 'nieaktywny' %}selected{% endif %}>Nieaktywny</option>
-                        </select>
+
+                        <!-- Hamburger Dropdown Panel -->
+                        <div id="hamburger-dropdown" class="hidden" style="position: absolute; right: 0; top: 45px; width: 320px; background: var(--bg-card, #ffffff); border: 1px solid var(--border-color); border-radius: 8px; box-shadow: var(--shadow-md); z-index: 1000; padding: 16px; display: flex; flex-direction: column; gap: 16px;">
+
+                            <!-- Sekcja Narzędzi -->
+                            <div style="border-bottom: 1px solid var(--border-color); padding-bottom: 12px;">
+                                <h4 style="margin: 0 0 8px 0; font-size: 0.9rem; color: var(--primary-color);"><i class="fas fa-tools"></i> Narzędzia</h4>
+                                <button type="button" id="btn-missing-data-wizard" class="button-secondary full-width" style="background-color: #d97706; color: white; justify-content: flex-start;">
+                                    <i class="fas fa-wrench"></i> Uzupełnij dane klientów
+                                </button>
+                            </div>
+
+                            <!-- Sekcja Filtrów Zaawansowanych -->
+                            <div style="border-bottom: 1px solid var(--border-color); padding-bottom: 12px;">
+                                <h4 style="margin: 0 0 8px 0; font-size: 0.9rem; color: var(--primary-color);"><i class="fas fa-filter"></i> Filtry zaawansowane</h4>
+                                <div class="filter-group" style="margin-bottom: 8px;">
+                                    <label for="filter_city">Miasto:</label>
+                                    <input type="text" id="filter_city" name="filter_city" value="{{ filter_city or '' }}" placeholder="np. Warszawa" style="margin-bottom: 0;">
+                                </div>
+                                <div class="filter-group">
+                                    <label for="filter_status">Status:</label>
+                                    <select id="filter_status" name="filter_status" style="margin-bottom: 0;">
+                                        <option value="">-- Każdy --</option>
+                                        <option value="nowy" {% if filter_status == 'nowy' %}selected{% endif %}>Nowy</option>
+                                        <option value="aktywny" {% if filter_status == 'aktywny' %}selected{% endif %}>Aktywny</option>
+                                        <option value="kontakt" {% if filter_status == 'kontakt' %}selected{% endif %}>Kontakt</option>
+                                        <option value="utracony" {% if filter_status == 'utracony' %}selected{% endif %}>Utracony</option>
+                                        <option value="lojalny" {% if filter_status == 'lojalny' %}selected{% endif %}>Lojalny</option>
+                                        <option value="nieaktywny" {% if filter_status == 'nieaktywny' %}selected{% endif %}>Nieaktywny</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Sekcja Kolumn -->
+                            <div>
+                                <h4 style="margin: 0 0 8px 0; font-size: 0.9rem; color: var(--primary-color);"><i class="fas fa-columns"></i> Widoczne kolumny</h4>
+                                <div id="column-selector" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.85rem;">
+                                    <label><input type="checkbox" name="toggle-cols" value="col-street" checked> Ulica</label>
+                                    <label><input type="checkbox" name="toggle-cols" value="col-city" checked> Miasto</label>
+                                    <label><input type="checkbox" name="toggle-cols" value="col-voivodeship" checked> Woj.</label>
+                                    <label><input type="checkbox" name="toggle-cols" value="col-phone" checked> Telefon</label>
+                                    <label><input type="checkbox" name="toggle-cols" value="col-email" checked> E-mail</label>
+                                    <label><input type="checkbox" name="toggle-cols" value="col-nip" checked> NIP</label>
+                                    <label><input type="checkbox" name="toggle-cols" value="col-www" checked> WWW</label>
+                                    <label><input type="checkbox" name="toggle-cols" value="col-notes" checked> Uwagi</label>
+                                    <label><input type="checkbox" name="toggle-cols" value="col-last_note" checked> Notatka</label>
+                                    <label><input type="checkbox" name="toggle-cols" value="col-score" checked> Score</label>
+                                </div>
+                            </div>
+
+                        </div>
                     </div>
                 </div>
             </form>
-            
-            <div id="column-selector" class="hidden">
-                <label><input type="checkbox" name="toggle-cols" value="col-street" checked> Ulica</label>
-                <label><input type="checkbox" name="toggle-cols" value="col-city" checked> Miasto</label>
-                <label><input type="checkbox" name="toggle-cols" value="col-voivodeship" checked> Woj.</label>
-                <label><input type="checkbox" name="toggle-cols" value="col-phone" checked> Telefon</label>
-                <label><input type="checkbox" name="toggle-cols" value="col-email" checked> E-mail</label>
-                <label><input type="checkbox" name="toggle-cols" value="col-nip" checked> NIP</label>
-                <label><input type="checkbox" name="toggle-cols" value="col-www" checked> WWW</label>
-                <label><input type="checkbox" name="toggle-cols" value="col-notes" checked> Uwagi</label>
-                <label><input type="checkbox" name="toggle-cols" value="col-last_note" checked> Ostatnia Notatka</label>
-            </div>
+        </div>
+
+        <div id="map-view" class="contacts-container hidden" style="height: 500px; border-radius: 10px; overflow: hidden; margin-top: 16px;">
+            <div id="maplibre-map" style="width: 100%; height: 100%;"></div>
         </div>
 
         <div id="table-view" class="contacts-container">
@@ -196,6 +239,8 @@
                             <th class="col-notes"><a href="#" data-sort="notes">Uwagi</a></th>
                             <th class="col-reminder_date"><a href="#" data-sort="reminder_date">Przypomnienie</a></th>
                             <th class="col-last_note"><a href="#" data-sort="last_note_date">Notatka</a></th>
+                            <th class="col-score"><a href="#" data-sort="lead_score">Score</a></th>
+                            <th class="col-actions">Akcje</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -284,6 +329,87 @@
                 <button type="submit" class="button-secondary">Importuj</button>
             </form>
         </div>
+    </div>
+</div>
+
+<!-- Modal Uzupełniania Brakujących Danych (Wizard) -->
+<div id="missing-data-modal" class="modal-overlay hidden">
+    <div class="modal-content" style="max-width: 550px;">
+        <button id="close-missing-data-modal" class="modal-close-btn">&times;</button>
+        <h2><i class="fas fa-wrench"></i> Uzupełnianie Brakujących Danych</h2>
+        <div id="wizard-body">
+            <p id="wizard-progress" style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;"></p>
+            <form id="wizard-form" style="display: flex; flex-direction: column; gap: 12px;">
+                <input type="hidden" id="wizard-contact-id">
+
+                <div>
+                    <label style="font-weight: bold;" id="wizard-contact-title">---</label>
+                </div>
+
+                <div class="form-group">
+                    <label for="wizard-phone">Telefon:</label>
+                    <input type="text" id="wizard-phone" placeholder="Brak danych">
+                </div>
+
+                <div class="form-group">
+                    <label for="wizard-email">E-mail:</label>
+                    <input type="email" id="wizard-email" placeholder="Brak danych">
+                </div>
+
+                <div class="form-group">
+                    <label for="wizard-nip">NIP:</label>
+                    <input type="text" id="wizard-nip" placeholder="Brak danych">
+                </div>
+
+                <div class="form-group">
+                    <label for="wizard-city">Miasto:</label>
+                    <input type="text" id="wizard-city" placeholder="Brak danych">
+                </div>
+
+                <div style="display: flex; gap: 8px; margin-top: 12px;">
+                    <button type="button" id="wizard-skip-btn" class="button-secondary" style="flex: 1;">Pomiń</button>
+                    <button type="submit" class="button-primary" style="flex: 2;"><i class="fas fa-save"></i> Zapisz i następny</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Powodu Utraty -->
+<div id="lost-reason-modal" class="modal-overlay hidden">
+    <div class="modal-content" style="max-width: 450px;">
+        <button id="close-lost-reason-modal" class="modal-close-btn">&times;</button>
+        <h2><i class="fas fa-exclamation-triangle"></i> Powód Utraty Transakcji</h2>
+        <form id="lost-reason-form" style="display: flex; flex-direction: column; gap: 12px; margin-top: 16px;">
+            <input type="hidden" id="lost-reason-contact-id">
+            <label for="lost_reason_select">Wybierz główny powód:</label>
+            <select id="lost_reason_select" required style="padding: 8px; border-radius: 6px; border: 1px solid var(--border-color);">
+                <option value="Cena zbyt wysoka">Cena zbyt wysoka</option>
+                <option value="Wybór konkurencji">Wybór konkurencji</option>
+                <option value="Brak kontaktu / Rezygnacja">Brak kontaktu / Rezygnacja</option>
+                <option value="Brak budżetu">Brak budżetu</option>
+                <option value="Niedopasowana oferta">Niedopasowana oferta</option>
+                <option value="Inne">Inne</option>
+            </select>
+            <button type="submit" class="button-danger full-width">
+                Potwierdź zmianę statusu
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Modal Szybkiej Notatki -->
+<div id="quick-note-modal" class="modal-overlay hidden">
+    <div class="modal-content" style="max-width: 500px;">
+        <button id="close-quick-note-modal" class="modal-close-btn">&times;</button>
+        <h2><i class="fas fa-sticky-note"></i> Dodaj notatkę dla: <span id="quick-note-contact-name"></span></h2>
+        <form id="quick-note-form" style="display: flex; flex-direction: column; gap: 12px; margin-top: 16px;">
+            <input type="hidden" id="quick-note-contact-id" name="contact_id">
+            <textarea id="quick-note-text" name="note_text" rows="4" placeholder="Wpisz treść notatki..." required></textarea>
+            <button type="submit" class="button-primary full-width">
+                <i class="fas fa-save"></i> Zapisz notatkę
+            </button>
+        </form>
     </div>
 </div>
 

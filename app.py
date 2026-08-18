@@ -60,6 +60,14 @@ def create_app():
     app.register_blueprint(history_bp)
     app.register_blueprint(api_bp)
 
+    with app.app_context():
+        from db import migrate_db
+        if os.path.exists(DATABASE_PATH):
+            try:
+                migrate_db()
+            except Exception:
+                pass
+
     @app.cli.command('init-db')
     def init_db_command():
         """Tworzy nową, czystą bazę danych."""
@@ -73,10 +81,13 @@ def create_app():
 app = create_app()
 
 def run_flask():
-    from db import init_db
+    from db import init_db, migrate_db
     if not os.path.exists(DATABASE_PATH):
         with app.app_context():
             init_db()
+    else:
+        with app.app_context():
+            migrate_db()
     app.run(host='127.0.0.1', port=5000, debug=False, use_reloader=False)
 
 if __name__ == '__main__':
