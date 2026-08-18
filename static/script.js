@@ -681,12 +681,23 @@ function renderCalendar() {
                     }
                 }
 
-                // Powiadomienia przeglądarkowe
-                if (activeReminders.length > 0 && Notification.permission === 'granted') {
-                    new Notification('CRM Przypomnienia', {
-                        body: `Masz ${activeReminders.length} oczekujących przypomnień na dziś!`,
-                        icon: '/favicon.ico'
-                    });
+                // Wyświetlaj powiadomienie przeglądarkowe przy każdym odświeżeniu/wejściu na stronę
+                if (activeReminders.length > 0) {
+                    if (Notification.permission === 'granted') {
+                        new Notification('CRM Przypomnienia', {
+                            body: `Masz ${activeReminders.length} oczekujących przypomnień na dziś!`,
+                            icon: '/favicon.ico'
+                        });
+                    } else if (Notification.permission !== 'denied') {
+                        Notification.requestPermission().then(permission => {
+                            if (permission === 'granted') {
+                                new Notification('CRM Przypomnienia', {
+                                    body: `Masz ${activeReminders.length} oczekujących przypomnień na dziś!`,
+                                    icon: '/favicon.ico'
+                                });
+                            }
+                        });
+                    }
                 }
             });
     }
@@ -1037,21 +1048,30 @@ function renderCalendar() {
             .then(res => res.json())
             .then(data => {
                 hideSpinner();
-                if (data.success) {
+                if (data.success && data.id) {
                     showToast('Stworzono nową delegację', 'success');
                     if (input) input.value = '';
                     currentDelegationId = data.id;
                     loadDelegationsList();
+                } else {
+                    showToast(data.message || 'Nie udało się utworzyć delegacji.', 'danger');
                 }
             })
-            .catch(() => hideSpinner());
+            .catch((err) => {
+                hideSpinner();
+                console.error(err);
+                showToast('Błąd komunikacji przy tworzeniu delegacji.', 'danger');
+            });
         });
     }
 
     const btnDeleteDel = document.getElementById('btn-delete-delegation');
     if (btnDeleteDel) {
         btnDeleteDel.addEventListener('click', () => {
-            if (!currentDelegationId) return;
+            if (!currentDelegationId) {
+                showToast('Wybierz delegację do usunięcia.', 'warning');
+                return;
+            }
             if (!confirm('Czy na pewno chcesz usunąć tę delegację?')) return;
             showSpinner();
             fetch(`/api/delegations/${currentDelegationId}`, {
@@ -1065,6 +1085,8 @@ function renderCalendar() {
                     showToast('Usunięto delegację', 'success');
                     currentDelegationId = null;
                     loadDelegationsList();
+                } else {
+                    showToast('Nie udało się usunąć delegacji.', 'danger');
                 }
             })
             .catch(() => hideSpinner());
