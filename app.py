@@ -63,12 +63,17 @@ def create_app():
     app.register_blueprint(delegations_bp)
 
     with app.app_context():
-        from db import migrate_db
+        from db import migrate_db, batch_geocode_contacts
         if os.path.exists(DATABASE_PATH):
             try:
                 migrate_db()
             except Exception:
                 pass
+        app_ctx = app.app_context()
+        def _bg_geocode():
+            with app_ctx:
+                batch_geocode_contacts()
+        threading.Thread(target=_bg_geocode, daemon=True).start()
 
     @app.cli.command('init-db')
     def init_db_command():

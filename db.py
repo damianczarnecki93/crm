@@ -119,7 +119,6 @@ def migrate_db():
                 FOREIGN KEY (contact_id) REFERENCES contacts (id) ON DELETE SET NULL
             )''')
         conn.commit()
-    batch_geocode_contacts()
 
 def init_db():
     with get_db_conn() as conn:
