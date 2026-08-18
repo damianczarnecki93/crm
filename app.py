@@ -54,19 +54,26 @@ def create_app():
     from routes.contacts import contacts_bp
     from routes.history import history_bp
     from routes.api import api_bp
+    from routes.delegations import delegations_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(contacts_bp)
     app.register_blueprint(history_bp)
     app.register_blueprint(api_bp)
+    app.register_blueprint(delegations_bp)
 
     with app.app_context():
-        from db import migrate_db
+        from db import migrate_db, batch_geocode_contacts
         if os.path.exists(DATABASE_PATH):
             try:
                 migrate_db()
             except Exception:
                 pass
+        app_ctx = app.app_context()
+        def _bg_geocode():
+            with app_ctx:
+                batch_geocode_contacts()
+        threading.Thread(target=_bg_geocode, daemon=True).start()
 
     @app.cli.command('init-db')
     def init_db_command():

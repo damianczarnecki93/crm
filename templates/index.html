@@ -134,6 +134,7 @@
                         <button type="button" id="view-btn-kanban" class="view-btn" title="Kanban (2)"><i class="fas fa-th-large"></i></button>
                         <button type="button" id="view-btn-calendar" class="view-btn" title="Kalendarz (3)"><i class="fas fa-calendar-alt"></i></button>
                         <button type="button" id="view-btn-map" class="view-btn" title="Mapa (4)"><i class="fas fa-map-marked-alt"></i></button>
+                        <button type="button" id="view-btn-delegations" class="view-btn" title="Delegacje (5)"><i class="fas fa-route"></i></button>
                     </div>
 
                     <!-- Dzwonek Powiadomień -->
@@ -252,6 +253,131 @@
 
         <div id="kanban-view" class="kanban-board hidden"></div>
         <div id="calendar-view" class="calendar-container hidden"></div>
+
+        <!-- Widok Delegacji -->
+        <div id="delegations-view" class="delegations-container hidden" style="margin-top: 16px;">
+            <div style="display: grid; grid-template-columns: 350px 1fr; gap: 16px;">
+                <!-- Panel lewy: Wybór delegacji & Formularz dodawania punktów -->
+                <div class="card" style="background: var(--bg-card, #ffffff); border: 1px solid var(--border-color); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 16px;">
+                    <div>
+                        <h3 style="margin: 0 0 8px 0; font-size: 1rem; color: var(--primary-color);"><i class="fas fa-briefcase"></i> Wybór Delegacji</h3>
+                        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                            <select id="delegation-select" style="flex: 1; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                                <option value="">-- Nowa planowana delegacja --</option>
+                            </select>
+                            <button type="button" id="btn-delete-delegation" class="button-danger" title="Usuń wybraną delegację"><i class="fas fa-trash"></i></button>
+                        </div>
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" id="new-delegation-title" placeholder="Nazwa delegacji (np. Wyjazd Południe)" style="flex: 1; margin: 0;">
+                            <button type="button" id="btn-create-delegation" class="button-primary" style="white-space: nowrap;"><i class="fas fa-plus"></i> Stwórz</button>
+                        </div>
+                    </div>
+
+                    <hr style="border: none; border-top: 1px solid var(--border-color); margin: 0;">
+
+                    <!-- Dodawanie punktu -->
+                    <div id="add-stop-panel" class="hidden">
+                        <h3 style="margin: 0 0 8px 0; font-size: 1rem; color: var(--primary-color);"><i class="fas fa-map-pin"></i> Dodaj Punkt do Trasy</h3>
+
+                        <div class="form-group" style="margin-bottom: 8px;">
+                            <label for="stop-type-select">Typ punktu:</label>
+                            <select id="stop-type-select" style="padding: 6px; border-radius: 6px; border: 1px solid var(--border-color);">
+                                <option value="start">🚀 Punkt początkowy (Start)</option>
+                                <option value="contact">🏢 Klient z bazy CRM</option>
+                                <option value="hotel">🏨 Hotel / Nocleg</option>
+                                <option value="custom">📍 Inny punkt / Adres ręczny</option>
+                                <option value="end">🏁 Punkt końcowy (Meta)</option>
+                            </select>
+                        </div>
+
+                        <!-- Opcja klienta -->
+                        <div id="stop-contact-wrapper" class="form-group" style="margin-bottom: 8px;">
+                            <label for="stop-contact-select">Wybierz klienta:</label>
+                            <select id="stop-contact-select" style="padding: 6px; border-radius: 6px; border: 1px solid var(--border-color);">
+                                <option value="">-- Wybierz klienta --</option>
+                            </select>
+                        </div>
+
+                        <!-- Nazwa i Adres -->
+                        <div id="stop-custom-wrapper">
+                            <div class="form-group" style="margin-bottom: 8px;">
+                                <label for="stop-name-input">Nazwa punktu:</label>
+                                <input type="text" id="stop-name-input" placeholder="np. Hotel Warszawianka / Start Biuro" style="margin: 0;">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 8px;">
+                                <label for="stop-address-input">Adres (Ulica, Miasto):</label>
+                                <input type="text" id="stop-address-input" placeholder="np. ul. Marszałkowska 10, Warszawa" style="margin: 0;">
+                            </div>
+                        </div>
+
+                        <!-- Czas wizyty -->
+                        <div class="form-group" style="margin-bottom: 12px;">
+                            <label for="stop-duration-input">Czas wizyty / postoju (minuty):</label>
+                            <input type="number" id="stop-duration-input" value="60" min="0" step="5" style="margin: 0;">
+                        </div>
+
+                        <button type="button" id="btn-add-stop" class="button-primary full-width"><i class="fas fa-plus-circle"></i> Dodaj do trasy</button>
+                    </div>
+
+                    <div id="no-delegation-msg" style="font-size: 0.85rem; color: var(--text-muted); text-align: center; padding: 12px;">
+                        Wybierz istniejącą delegację lub stwórz nową, aby rozpocząć planowanie trasy.
+                    </div>
+                </div>
+
+                <!-- Panel prawy: Podsumowanie, Lista punktów DnD oraz Mapa -->
+                <div style="display: flex; flex-direction: column; gap: 16px;">
+                    <!-- Karty Podsumowania Trasy -->
+                    <div id="delegation-summary-bar" class="hidden" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;">
+                        <div class="stat-card" style="padding: 10px 14px;">
+                            <div class="stat-icon primary"><i class="fas fa-road"></i></div>
+                            <div class="stat-info">
+                                <span class="stat-label">Dystans</span>
+                                <span class="stat-value" id="summary-distance">0 km</span>
+                            </div>
+                        </div>
+                        <div class="stat-card" style="padding: 10px 14px;">
+                            <div class="stat-icon info"><i class="fas fa-car"></i></div>
+                            <div class="stat-info">
+                                <span class="stat-label">Czas jazdy</span>
+                                <span class="stat-value" id="summary-drive-time">0 min</span>
+                            </div>
+                        </div>
+                        <div class="stat-card" style="padding: 10px 14px;">
+                            <div class="stat-icon warning"><i class="fas fa-clock"></i></div>
+                            <div class="stat-info">
+                                <span class="stat-label">Czas wizyt</span>
+                                <span class="stat-value" id="summary-visit-time">0 min</span>
+                            </div>
+                        </div>
+                        <div class="stat-card" style="padding: 10px 14px;">
+                            <div class="stat-icon success"><i class="fas fa-stopwatch"></i></div>
+                            <div class="stat-info">
+                                <span class="stat-label">Łączny czas</span>
+                                <span class="stat-value" id="summary-total-time">0 min</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sekcja Podziału: Lista Punktów + Mapa -->
+                    <div style="display: grid; grid-template-columns: 320px 1fr; gap: 16px; min-height: 450px;">
+                        <!-- Lista punktów (Drag & Drop) -->
+                        <div class="card" style="background: var(--bg-card, #ffffff); border: 1px solid var(--border-color); border-radius: 10px; padding: 14px; display: flex; flex-direction: column;">
+                            <h4 style="margin: 0 0 10px 0; font-size: 0.95rem; color: var(--primary-color); display: flex; align-items: center; gap: 6px;">
+                                <i class="fas fa-list-ol"></i> Zaplanowane Punkty (Drag & Drop)
+                            </h4>
+                            <div id="stops-list" style="display: flex; flex-direction: column; gap: 8px; flex: 1; overflow-y: auto;">
+                                <p style="font-size: 0.85rem; color: var(--text-muted); text-align: center; margin-top: 20px;">Brak punktów w delegacji.</p>
+                            </div>
+                        </div>
+
+                        <!-- Mapa Delegacji -->
+                        <div style="border-radius: 10px; overflow: hidden; border: 1px solid var(--border-color); position: relative;">
+                            <div id="delegation-maplibre-map" style="width: 100%; height: 100%; min-height: 400px;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </main>
 </div>
 
@@ -480,6 +606,10 @@ document.addEventListener('keydown', function(e) {
             document.getElementById('view-btn-kanban')?.click();
         } else if (e.key === '3') {
             document.getElementById('view-btn-calendar')?.click();
+        } else if (e.key === '4') {
+            document.getElementById('view-btn-map')?.click();
+        } else if (e.key === '5') {
+            document.getElementById('view-btn-delegations')?.click();
         }
     }
 
