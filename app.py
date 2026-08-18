@@ -54,11 +54,13 @@ def create_app():
     from routes.contacts import contacts_bp
     from routes.history import history_bp
     from routes.api import api_bp
+    from routes.delegations import delegations_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(contacts_bp)
     app.register_blueprint(history_bp)
     app.register_blueprint(api_bp)
+    app.register_blueprint(delegations_bp)
 
     with app.app_context():
         from db import migrate_db

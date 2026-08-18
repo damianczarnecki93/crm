@@ -712,14 +712,16 @@ function renderCalendar() {
     const kanbanView = document.getElementById('kanban-view');
     const calendarView = document.getElementById('calendar-view');
     const mapView = document.getElementById('map-view');
+    const delegationsView = document.getElementById('delegations-view');
     const tableBtn = document.getElementById('view-btn-table');
     const kanbanBtn = document.getElementById('view-btn-kanban');
     const calendarBtn = document.getElementById('view-btn-calendar');
     const mapBtn = document.getElementById('view-btn-map');
+    const delegationsBtn = document.getElementById('view-btn-delegations');
 
     function switchView(view) {
-        [tableView, kanbanView, calendarView, mapView].forEach(v => v?.classList.add('hidden'));
-        [tableBtn, kanbanBtn, calendarBtn, mapBtn].forEach(b => b?.classList.remove('active'));
+        [tableView, kanbanView, calendarView, mapView, delegationsView].forEach(v => v?.classList.add('hidden'));
+        [tableBtn, kanbanBtn, calendarBtn, mapBtn, delegationsBtn].forEach(b => b?.classList.remove('active'));
         localStorage.setItem('crm_view', view);
         if (view === 'kanban') {
             kanbanView?.classList.remove('hidden');
@@ -733,6 +735,10 @@ function renderCalendar() {
             mapView?.classList.remove('hidden');
             mapBtn?.classList.add('active');
             fetchFilteredContacts();
+        } else if (view === 'delegations') {
+            delegationsView?.classList.remove('hidden');
+            delegationsBtn?.classList.add('active');
+            initDelegationsView();
         } else {
             tableView?.classList.remove('hidden');
             tableBtn?.classList.add('active');
@@ -920,9 +926,427 @@ function renderCalendar() {
         kanbanBtn.addEventListener('click', () => switchView('kanban'));
         calendarBtn.addEventListener('click', () => switchView('calendar'));
         if (mapBtn) mapBtn.addEventListener('click', () => switchView('map'));
+        if (delegationsBtn) delegationsBtn.addEventListener('click', () => switchView('delegations'));
         switchView(savedView);
     } else {
         fetchFilteredContacts();
+    }
+
+    // --- MODUŁ DELEGACJI ---
+    let currentDelegationId = null;
+    let delegationMap = null;
+    let delegationMapMarkers = [];
+    let stopsSortable = null;
+
+    function initDelegationsView() {
+        loadDelegationsList();
+        loadContactsForDelegationSelect();
+        initDelegationMap();
+    }
+
+    function initDelegationMap() {
+        const mapContainer = document.getElementById('delegation-maplibre-map');
+        if (!mapContainer || typeof maplibregl === 'undefined') return;
+
+        if (!delegationMap) {
+            delegationMap = new maplibregl.Map({
+                container: 'delegation-maplibre-map',
+                style: maplibreStyle,
+                center: [19.4803, 52.0693],
+                zoom: 5.5
+            });
+            delegationMap.addControl(new maplibregl.NavigationControl());
+        }
+        setTimeout(() => delegationMap.resize(), 300);
+    }
+
+    function loadDelegationsList() {
+        fetch('/api/delegations')
+            .then(res => res.json())
+            .then(delegations => {
+                const select = document.getElementById('delegation-select');
+                if (!select) return;
+                select.innerHTML = '<option value="">-- Wybierz lub stwórz nową --</option>';
+                delegations.forEach(d => {
+                    const opt = document.createElement('option');
+                    opt.value = d.id;
+                    opt.textContent = `${d.title}${d.date ? ` (${d.date})` : ''}`;
+                    if (d.id === currentDelegationId) opt.selected = true;
+                    select.appendChild(opt);
+                });
+
+                if (currentDelegationId) {
+                    loadDelegationDetails(currentDelegationId);
+                } else {
+                    document.getElementById('add-stop-panel')?.classList.add('hidden');
+                    document.getElementById('delegation-summary-bar')?.classList.add('hidden');
+                    document.getElementById('no-delegation-msg')?.classList.remove('hidden');
+                    renderStopsList([]);
+                }
+            });
+    }
+
+    function loadContactsForDelegationSelect() {
+        fetch('/filter')
+            .then(res => res.json())
+            .then(contacts => {
+                const select = document.getElementById('stop-contact-select');
+                if (!select) return;
+                select.innerHTML = '<option value="">-- Wybierz klienta z bazy --</option>';
+                contacts.forEach(c => {
+                    const opt = document.createElement('option');
+                    opt.value = c.id;
+                    opt.textContent = `${c.name} (${c.city || 'Brak miasta'})`;
+                    select.appendChild(opt);
+                });
+            });
+    }
+
+    const delSelect = document.getElementById('delegation-select');
+    if (delSelect) {
+        delSelect.addEventListener('change', (e) => {
+            const val = e.target.value;
+            if (val) {
+                currentDelegationId = parseInt(val, 10);
+                loadDelegationDetails(currentDelegationId);
+            } else {
+                currentDelegationId = null;
+                document.getElementById('add-stop-panel')?.classList.add('hidden');
+                document.getElementById('delegation-summary-bar')?.classList.add('hidden');
+                document.getElementById('no-delegation-msg')?.classList.remove('hidden');
+                renderStopsList([]);
+                clearDelegationMap();
+            }
+        });
+    }
+
+    const btnCreateDel = document.getElementById('btn-create-delegation');
+    if (btnCreateDel) {
+        btnCreateDel.addEventListener('click', () => {
+            const input = document.getElementById('new-delegation-title');
+            const title = input?.value.trim() || 'Nowa Delegacja';
+            showSpinner();
+            fetch('/api/delegations', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                },
+                body: JSON.stringify({ title: title })
+            })
+            .then(res => res.json())
+            .then(data => {
+                hideSpinner();
+                if (data.success) {
+                    showToast('Stworzono nową delegację', 'success');
+                    if (input) input.value = '';
+                    currentDelegationId = data.id;
+                    loadDelegationsList();
+                }
+            })
+            .catch(() => hideSpinner());
+        });
+    }
+
+    const btnDeleteDel = document.getElementById('btn-delete-delegation');
+    if (btnDeleteDel) {
+        btnDeleteDel.addEventListener('click', () => {
+            if (!currentDelegationId) return;
+            if (!confirm('Czy na pewno chcesz usunąć tę delegację?')) return;
+            showSpinner();
+            fetch(`/api/delegations/${currentDelegationId}`, {
+                method: 'DELETE',
+                headers: { 'X-CSRFToken': getCsrfToken() }
+            })
+            .then(res => res.json())
+            .then(data => {
+                hideSpinner();
+                if (data.success) {
+                    showToast('Usunięto delegację', 'success');
+                    currentDelegationId = null;
+                    loadDelegationsList();
+                }
+            })
+            .catch(() => hideSpinner());
+        });
+    }
+
+    // Toggle widoczności pól formularza wg typu punktu
+    const stopTypeSelect = document.getElementById('stop-type-select');
+    const stopContactWrapper = document.getElementById('stop-contact-wrapper');
+    const stopCustomWrapper = document.getElementById('stop-custom-wrapper');
+
+    if (stopTypeSelect) {
+        stopTypeSelect.addEventListener('change', () => {
+            const type = stopTypeSelect.value;
+            if (type === 'contact') {
+                stopContactWrapper?.classList.remove('hidden');
+                stopCustomWrapper?.classList.add('hidden');
+            } else {
+                stopContactWrapper?.classList.add('hidden');
+                stopCustomWrapper?.classList.remove('hidden');
+            }
+        });
+        stopTypeSelect.dispatchEvent(new Event('change'));
+    }
+
+    const btnAddStop = document.getElementById('btn-add-stop');
+    if (btnAddStop) {
+        btnAddStop.addEventListener('click', () => {
+            if (!currentDelegationId) return;
+            const stopType = stopTypeSelect.value;
+            const contactId = document.getElementById('stop-contact-select').value;
+            const name = document.getElementById('stop-name-input').value.trim();
+            const address = document.getElementById('stop-address-input').value.trim();
+            const duration = parseInt(document.getElementById('stop-duration-input').value, 10) || 0;
+
+            if (stopType === 'contact' && !contactId) {
+                showToast('Wybierz klienta z listy', 'warning');
+                return;
+            }
+            if (stopType !== 'contact' && !name && !address) {
+                showToast('Podaj nazwę lub adres punktu', 'warning');
+                return;
+            }
+
+            showSpinner();
+            fetch(`/api/delegations/${currentDelegationId}/stops`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                },
+                body: JSON.stringify({
+                    stop_type: stopType,
+                    contact_id: contactId ? parseInt(contactId, 10) : null,
+                    name: name,
+                    address: address,
+                    visit_duration_minutes: duration
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                hideSpinner();
+                if (data.success) {
+                    showToast('Dodano punkt do delegacji', 'success');
+                    document.getElementById('stop-name-input').value = '';
+                    document.getElementById('stop-address-input').value = '';
+                    loadDelegationDetails(currentDelegationId);
+                }
+            })
+            .catch(() => hideSpinner());
+        });
+    }
+
+    function loadDelegationDetails(delegationId) {
+        document.getElementById('add-stop-panel')?.classList.remove('hidden');
+        document.getElementById('delegation-summary-bar')?.classList.remove('hidden');
+        document.getElementById('no-delegation-msg')?.classList.add('hidden');
+
+        fetch(`/api/delegations/${delegationId}`)
+            .then(res => res.json())
+            .then(data => {
+                if (!data.success) return;
+                updateSummaryBar(data.summary);
+                renderStopsList(data.stops);
+                renderDelegationMapRoute(data.stops, data.route);
+            });
+    }
+
+    function formatMinutes(min) {
+        if (!min) return '0 min';
+        const hrs = Math.floor(min / 60);
+        const remMin = Math.round(min % 60);
+        if (hrs === 0) return `${remMin} min`;
+        return `${hrs}h ${remMin}m`;
+    }
+
+    function updateSummaryBar(summary) {
+        if (!summary) return;
+        document.getElementById('summary-distance').innerText = `${summary.total_distance_km || 0} km`;
+        document.getElementById('summary-drive-time').innerText = formatMinutes(summary.total_drive_duration_min);
+        document.getElementById('summary-visit-time').innerText = formatMinutes(summary.total_visit_duration_min);
+        document.getElementById('summary-total-time').innerText = formatMinutes(summary.total_trip_duration_min);
+    }
+
+    function renderStopsList(stops) {
+        const container = document.getElementById('stops-list');
+        if (!container) return;
+        container.innerHTML = '';
+
+        if (!stops || stops.length === 0) {
+            container.innerHTML = '<p style="font-size: 0.85rem; color: var(--text-muted); text-align: center; margin-top: 20px;">Brak punktów w delegacji.</p>';
+            return;
+        }
+
+        const typeIcons = {
+            start: '<i class="fas fa-play-circle" style="color: #16a34a;"></i>',
+            end: '<i class="fas fa-flag-checkered" style="color: #dc2626;"></i>',
+            hotel: '<i class="fas fa-hotel" style="color: #0284c7;"></i>',
+            contact: '<i class="fas fa-building" style="color: #2563eb;"></i>',
+            custom: '<i class="fas fa-map-marker-alt" style="color: #d97706;"></i>'
+        };
+
+        stops.forEach((stop, index) => {
+            const item = document.createElement('div');
+            item.className = 'card stop-item';
+            item.dataset.stopId = stop.id;
+            item.style.cssText = 'padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-card); display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: grab;';
+
+            item.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;">
+                    <span style="font-weight: bold; color: var(--text-muted); font-size: 0.85rem;">#${index + 1}</span>
+                    <span style="font-size: 1rem;">${typeIcons[stop.stop_type] || typeIcons.custom}</span>
+                    <div style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        <strong style="font-size: 0.85rem; color: var(--text-main); font-weight: 600;">${stop.name}</strong>
+                        <div style="font-size: 0.75rem; color: var(--text-muted); text-overflow: ellipsis; overflow: hidden;">${stop.address || 'Brak adresu'}</div>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <input type="number" value="${stop.visit_duration_minutes || 0}" min="0" step="5" class="stop-duration-edit" title="Czas wizyty (min)" style="width: 55px; padding: 2px 4px; font-size: 0.8rem; text-align: center; margin: 0; border: 1px solid var(--border-color); border-radius: 4px;">
+                    <button type="button" class="btn-delete-stop button-secondary" style="padding: 3px 6px; font-size: 0.75rem; color: #ef4444;" title="Usuń punkt"><i class="fas fa-times"></i></button>
+                </div>
+            `;
+
+            const durInput = item.querySelector('.stop-duration-edit');
+            if (durInput) {
+                durInput.addEventListener('change', (e) => {
+                    const newDur = parseInt(e.target.value, 10) || 0;
+                    fetch(`/api/delegations/stops/${stop.id}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCsrfToken()
+                        },
+                        body: JSON.stringify({ visit_duration_minutes: newDur })
+                    }).then(() => loadDelegationDetails(currentDelegationId));
+                });
+            }
+
+            const delBtn = item.querySelector('.btn-delete-stop');
+            if (delBtn) {
+                delBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    fetch(`/api/delegations/stops/${stop.id}`, {
+                        method: 'DELETE',
+                        headers: { 'X-CSRFToken': getCsrfToken() }
+                    }).then(() => loadDelegationDetails(currentDelegationId));
+                });
+            }
+
+            container.appendChild(item);
+        });
+
+        if (stopsSortable) stopsSortable.destroy();
+        stopsSortable = new Sortable(container, {
+            animation: 150,
+            ghostClass: 'kanban-card-ghost',
+            onEnd: function () {
+                const newOrderIds = Array.from(container.querySelectorAll('.stop-item')).map(el => parseInt(el.dataset.stopId, 10));
+                fetch(`/api/delegations/${currentDelegationId}/stops/reorder`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken()
+                    },
+                    body: JSON.stringify({ stop_ids: newOrderIds })
+                }).then(() => loadDelegationDetails(currentDelegationId));
+            }
+        });
+    }
+
+    function clearDelegationMap() {
+        delegationMapMarkers.forEach(m => m.remove());
+        delegationMapMarkers = [];
+        if (delegationMap && delegationMap.getSource('route-source')) {
+            delegationMap.removeLayer('route-layer');
+            delegationMap.removeSource('route-source');
+        }
+    }
+
+    function renderDelegationMapRoute(stops, routeInfo) {
+        if (!delegationMap) return;
+        clearDelegationMap();
+
+        const bounds = new maplibregl.LngLatBounds();
+        let hasCoords = false;
+
+        stops.forEach((stop, idx) => {
+            if (stop.latitude !== null && stop.longitude !== null) {
+                hasCoords = true;
+                bounds.extend([stop.longitude, stop.latitude]);
+
+                const el = document.createElement('div');
+                el.className = 'custom-marker';
+                el.style.cssText = `
+                    background-color: #2563eb;
+                    color: white;
+                    border-radius: 50%;
+                    width: 26px;
+                    height: 26px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-weight: bold;
+                    font-size: 0.8rem;
+                    border: 2px solid white;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+                `;
+                el.innerText = idx + 1;
+
+                const popup = new maplibregl.Popup({ offset: 15 }).setHTML(`
+                    <div style="font-family: var(--font-family); font-size: 0.85rem;">
+                        <strong>#${idx + 1} ${stop.name}</strong><br>
+                        <span style="color: #666;">${stop.address || ''}</span><br>
+                        <span>Czas postoju: ${stop.visit_duration_minutes || 0} min</span>
+                    </div>
+                `);
+
+                const marker = new maplibregl.Marker({ element: el })
+                    .setLngLat([stop.longitude, stop.latitude])
+                    .setPopup(popup)
+                    .addTo(delegationMap);
+
+                delegationMapMarkers.push(marker);
+            }
+        });
+
+        if (routeInfo && routeInfo.geometry) {
+            const geojson = {
+                'type': 'Feature',
+                'properties': {},
+                'geometry': routeInfo.geometry
+            };
+
+            if (delegationMap.getSource('route-source')) {
+                delegationMap.getSource('route-source').setData(geojson);
+            } else {
+                delegationMap.addSource('route-source', {
+                    'type': 'geojson',
+                    'data': geojson
+                });
+
+                delegationMap.addLayer({
+                    'id': 'route-layer',
+                    'type': 'line',
+                    'source': 'route-source',
+                    'layout': {
+                        'line-join': 'round',
+                        'line-cap': 'round'
+                    },
+                    'paint': {
+                        'line-color': '#2563eb',
+                        'line-width': 5,
+                        'line-opacity': 0.8
+                    }
+                });
+            }
+        }
+
+        if (hasCoords) {
+            delegationMap.fitBounds(bounds, { padding: 50, maxZoom: 14 });
+        }
+        setTimeout(() => delegationMap.resize(), 300);
     }
     
     updateSortIcons();

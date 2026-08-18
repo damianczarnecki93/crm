@@ -62,6 +62,9 @@ def geocode_address(street='', city='', voivodeship=''):
         city_lower = city_clean.lower()
         if city_lower in POLISH_CITY_COORDS:
             return POLISH_CITY_COORDS[city_lower]
+        for k, v in POLISH_CITY_COORDS.items():
+            if k in city_lower or city_lower in k:
+                return v
 
     return None, None
 
@@ -89,7 +92,34 @@ def migrate_db():
                 notes TEXT,
                 FOREIGN KEY (contact_id) REFERENCES contacts (id) ON DELETE CASCADE
             )''')
+
+        # Tworzenie tabeli delegacji
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS delegations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                date DATE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )''')
+
+        # Tworzenie tabeli punktów delegacji (stops)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS delegation_stops (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                delegation_id INTEGER NOT NULL,
+                stop_order INTEGER NOT NULL,
+                stop_type TEXT NOT NULL DEFAULT 'custom', -- 'start', 'end', 'hotel', 'contact', 'custom'
+                name TEXT NOT NULL,
+                address TEXT,
+                latitude REAL,
+                longitude REAL,
+                visit_duration_minutes INTEGER DEFAULT 0,
+                contact_id INTEGER,
+                FOREIGN KEY (delegation_id) REFERENCES delegations (id) ON DELETE CASCADE,
+                FOREIGN KEY (contact_id) REFERENCES contacts (id) ON DELETE SET NULL
+            )''')
         conn.commit()
+    batch_geocode_contacts()
 
 def init_db():
     with get_db_conn() as conn:
@@ -136,6 +166,30 @@ def init_db():
                 sale_date DATE NOT NULL,
                 notes TEXT,
                 FOREIGN KEY (contact_id) REFERENCES contacts (id) ON DELETE CASCADE
+            )''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS delegations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                date DATE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS delegation_stops (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                delegation_id INTEGER NOT NULL,
+                stop_order INTEGER NOT NULL,
+                stop_type TEXT NOT NULL DEFAULT 'custom',
+                name TEXT NOT NULL,
+                address TEXT,
+                latitude REAL,
+                longitude REAL,
+                visit_duration_minutes INTEGER DEFAULT 0,
+                contact_id INTEGER,
+                FOREIGN KEY (delegation_id) REFERENCES delegations (id) ON DELETE CASCADE,
+                FOREIGN KEY (contact_id) REFERENCES contacts (id) ON DELETE SET NULL
             )''')
         conn.commit()
 

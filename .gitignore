@@ -4,3 +4,5 @@ __pycache__/
 crm.db
 .user_data/
 /home/jules/verification/
+venv/
+.venv/
