@@ -1,0 +1,23 @@
+ * Serving Flask app 'app'
+ * Debug mode: off
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+[33mPress CTRL+C to quit[0m
+127.0.0.1 - - [18/Aug/2026 11:10:45] "HEAD / HTTP/1.1" 200 -
+127.0.0.1 - - [18/Aug/2026 11:11:33] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [18/Aug/2026 11:11:33] "GET /static/style.css HTTP/1.1" 200 -
+127.0.0.1 - - [18/Aug/2026 11:11:33] "GET /static/css/extra.css HTTP/1.1" 200 -
+127.0.0.1 - - [18/Aug/2026 11:11:33] "GET /static/script.js HTTP/1.1" 200 -
+127.0.0.1 - - [18/Aug/2026 11:11:33] "GET /static/js/app_helpers.js HTTP/1.1" 200 -
+127.0.0.1 - - [18/Aug/2026 11:11:33] "GET /api/reminders HTTP/1.1" 200 -
+127.0.0.1 - - [18/Aug/2026 11:11:33] "GET /filter?q=&filter_city=&filter_status=&toggle-cols=col-street&toggle-cols=col-city&toggle-cols=col-voivodeship&toggle-cols=col-phone&toggle-cols=col-email&toggle-cols=col-nip&toggle-cols=col-www&toggle-cols=col-notes&toggle-cols=col-last_note&toggle-cols=col-score&sort_by=name&order=asc HTTP/1.1" 200 -
+127.0.0.1 - - [18/Aug/2026 11:11:35] "GET /api/delegations HTTP/1.1" 200 -
+127.0.0.1 - - [18/Aug/2026 11:11:35] "GET /filter HTTP/1.1" 200 -
+127.0.0.1 - - [18/Aug/2026 11:11:36] "POST /api/delegations HTTP/1.1" 200 -
+127.0.0.1 - - [18/Aug/2026 11:11:36] "GET /api/delegations HTTP/1.1" 200 -
+127.0.0.1 - - [18/Aug/2026 11:11:36] "GET /api/delegations/7 HTTP/1.1" 200 -
+127.0.0.1 - - [18/Aug/2026 11:11:38] "POST /api/delegations/7/stops HTTP/1.1" 200 -
+127.0.0.1 - - [18/Aug/2026 11:11:38] "GET /api/delegations/7 HTTP/1.1" 200 -
+127.0.0.1 - - [18/Aug/2026 11:11:39] "GET /filter?q=&filter_city=&filter_status=&toggle-cols=col-street&toggle-cols=col-city&toggle-cols=col-voivodeship&toggle-cols=col-phone&toggle-cols=col-email&toggle-cols=col-nip&toggle-cols=col-www&toggle-cols=col-notes&toggle-cols=col-last_note&toggle-cols=col-score&sort_by=name&order=asc HTTP/1.1" 200 -
+127.0.0.1 - - [18/Aug/2026 11:11:41] "POST /contact/1/update_status HTTP/1.1" 200 -
+127.0.0.1 - - [18/Aug/2026 11:11:41] "GET /api/stats HTTP/1.1" 200 -
