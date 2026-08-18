@@ -563,19 +563,6 @@ function renderCalendar() {
     let leafletMap = null;
     let mapMarkers = [];
 
-    const cityCoords = {
-        'warszawa': [52.2297, 21.0122], 'kraków': [50.0647, 19.9450], 'krakow': [50.0647, 19.9450],
-        'wrocław': [51.1100, 17.0333], 'wroclaw': [51.1100, 17.0333], 'poznań': [52.4064, 16.9252],
-        'poznan': [52.4064, 16.9252], 'gdańsk': [54.3520, 18.6466], 'gdansk': [54.3520, 18.6466],
-        'szczecin': [53.4285, 14.5528], 'bydgoszcz': [53.1235, 18.0084], 'lublin': [51.2465, 22.5684],
-        'katowice': [50.2649, 19.0238], 'białystok': [53.1325, 23.1688], 'bialystok': [53.1325, 23.1688],
-        'gdynia': [54.5189, 18.5305], 'częstochowa': [50.8118, 19.1203], 'czestochowa': [50.8118, 19.1203],
-        'radom': [51.4027, 21.1471], 'sosnowiec': [50.2863, 19.1041], 'toruń': [53.0138, 18.5981],
-        'torun': [53.0138, 18.5981], 'kielce': [50.8703, 20.6275], 'rzeszów': [50.0412, 21.9991],
-        'rzeszow': [50.0412, 21.9991], 'gliwice': [50.2945, 18.6714], 'olsztyn': [53.7784, 20.4801],
-        'bielsko-biała': [49.8225, 19.0444], 'zielona góra': [51.9356, 15.5062], 'opole': [50.6721, 17.9253]
-    };
-
     function renderMap(contacts) {
         const mapView = document.getElementById('map-view');
         if (!mapView || typeof L === 'undefined') return;
@@ -590,26 +577,47 @@ function renderCalendar() {
         mapMarkers.forEach(m => leafletMap.removeLayer(m));
         mapMarkers = [];
 
-        contacts.forEach((c) => {
-            const cityKey = (c.city || '').toLowerCase().trim();
-            const coords = cityCoords[cityKey];
+        // Filtrowanie kontaktów posiadających geolokalizację
+        const validContacts = contacts.filter(c => c.latitude !== null && c.longitude !== null && !isNaN(c.latitude) && !isNaN(c.longitude));
 
-            // Jeśli miasto jest znane w Słowniku, użyj dokładnych współrzędnych miasta (z minimalnym mikro-odstępem na unikalne ID dla nakładających się punktów)
-            let lat, lng;
-            if (coords) {
-                lat = coords[0] + (c.id % 5) * 0.003 - 0.006;
-                lng = coords[1] + ((c.id * 3) % 5) * 0.003 - 0.006;
-            } else {
-                // Gdy miasto nie jest wpisane lub nieznane w słowniku, wylicz powtarzalną pozycję na bazie ID w obrębie centralnej Polski
-                lat = 52.0 + ((c.id * 17) % 180) / 100.0 - 0.9;
-                lng = 19.0 + ((c.id * 31) % 250) / 100.0 - 1.25;
+        // Śledzenie nakładających się punktów dla zachowania przesunięcia (jitter/spiral)
+        const coordCounts = {};
+
+        const bounds = [];
+
+        validContacts.forEach((c) => {
+            const key = `${c.latitude.toFixed(4)},${c.longitude.toFixed(4)}`;
+            const count = coordCounts[key] || 0;
+            coordCounts[key] = count + 1;
+
+            let finalLat = c.latitude;
+            let finalLng = c.longitude;
+
+            // Jeśli punkt się powtarza, dodaj niewielkie przesunięcie po spirali/kołe
+            if (count > 0) {
+                const angle = count * 1.2;
+                const distance = 0.002 * Math.sqrt(count);
+                finalLat += distance * Math.cos(angle);
+                finalLng += distance * Math.sin(angle);
             }
 
-            const marker = L.marker([lat, lng]).addTo(leafletMap);
-            const locationText = c.city ? `${c.city} ${c.street || ''}` : 'Brak podanego miasta';
-            marker.bindPopup(`<b><a href="/contact/${c.id}">${c.name}</a></b><br>${locationText}<br>Status: ${c.status}`);
+            bounds.push([finalLat, finalLng]);
+
+            const marker = L.marker([finalLat, finalLng]).addTo(leafletMap);
+            const locationText = `${c.city || ''} ${c.street || ''}`.trim() || 'Brak dokładnego adresu';
+            marker.bindPopup(`
+                <div style="font-family: var(--font-family); font-size: 0.9rem;">
+                    <strong><a href="/contact/${c.id}" style="color: var(--primary-color); font-weight: 600;">${c.name}</a></strong><br>
+                    <span style="color: #666;"><i class="fas fa-map-marker-alt"></i> ${locationText}</span><br>
+                    <span style="display: inline-block; margin-top: 4px; padding: 2px 6px; border-radius: 4px; background: #e0f2fe; color: #0369a1; font-size: 0.75rem;">Status: ${c.status}</span>
+                </div>
+            `);
             mapMarkers.push(marker);
         });
+
+        if (bounds.length > 0) {
+            leafletMap.fitBounds(bounds, { padding: [30, 30], maxZoom: 14 });
+        }
 
         setTimeout(() => leafletMap.invalidateSize(), 300);
     }

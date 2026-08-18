@@ -3,7 +3,7 @@ from io import TextIOWrapper
 from datetime import datetime, timezone, timedelta
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 
-from db import get_db_conn, get_filtered_contacts_from_db, validate_contact_form
+from db import get_db_conn, get_filtered_contacts_from_db, validate_contact_form, geocode_address
 
 contacts_bp = Blueprint('contacts', __name__)
 
@@ -23,14 +23,16 @@ def add_contact():
     form_values = {k: data.get(k, '').strip() if data.get(k) is not None else '' for k in form_keys}
     today_date = datetime.now(timezone.utc).date()
     
+    lat, lng = geocode_address(form_values['street'], form_values['city'], form_values['voivodeship'])
+
     with get_db_conn() as conn:
         cursor = conn.cursor()
         # Automatyczne ustawienie przypomnienia na +7 dni od utworzenia
         reminder_7d = today_date + timedelta(days=7)
         cursor.execute(
-            '''INSERT INTO contacts (name, street, city, voivodeship, phone, email, nip, www, notes, last_contact_date, status, reminder_date)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-            (*form_values.values(), today_date, 'nowy', reminder_7d)
+            '''INSERT INTO contacts (name, street, city, voivodeship, phone, email, nip, www, notes, last_contact_date, status, reminder_date, latitude, longitude)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+            (*form_values.values(), today_date, 'nowy', reminder_7d, lat, lng)
         )
         contact_id = cursor.lastrowid
         cursor.execute('INSERT INTO contact_history (contact_id, change_description) VALUES (?, ?)', (contact_id, 'Kontakt utworzony. Automatycznie ustawiono przypomnienie na +7 dni.'))
@@ -79,10 +81,11 @@ def import_csv():
                 if not data[0]:
                     continue
                     
+                lat, lng = geocode_address(data[1], data[2], data[3])
                 cursor.execute(
-                    '''INSERT INTO contacts (name, street, city, voivodeship, phone, email, nip, www, notes, last_contact_date, status) 
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                    (*data[:9], today_date, 'nowy')
+                    '''INSERT INTO contacts (name, street, city, voivodeship, phone, email, nip, www, notes, last_contact_date, status, latitude, longitude)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                    (*data[:9], today_date, 'nowy', lat, lng)
                 )
                 contact_id = cursor.lastrowid
                 
@@ -158,14 +161,16 @@ def update_contact(contact_id):
         return redirect(url_for('contacts.edit_contact', contact_id=contact_id))
 
     form_keys = ['name', 'street', 'city', 'voivodeship', 'phone', 'email', 'nip', 'www', 'notes']
-    form_values = [data.get(k, '').strip() if data.get(k) is not None else '' for k in form_keys]
-    
+    form_dict = {k: data.get(k, '').strip() if data.get(k) is not None else '' for k in form_keys}
+    form_values = list(form_dict.values())
+    lat, lng = geocode_address(form_dict['street'], form_dict['city'], form_dict['voivodeship'])
+
     with get_db_conn() as conn:
         conn.execute(
             '''UPDATE contacts 
-               SET name = ?, street = ?, city = ?, voivodeship = ?, phone = ?, email = ?, nip = ?, www = ?, notes = ? 
+               SET name = ?, street = ?, city = ?, voivodeship = ?, phone = ?, email = ?, nip = ?, www = ?, notes = ?, latitude = ?, longitude = ?
                WHERE id = ?''',
-            (*form_values, contact_id)
+            (*form_values, lat, lng, contact_id)
         )
         conn.commit()
 
