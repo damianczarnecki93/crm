@@ -29,18 +29,49 @@ POLISH_CITY_COORDS = {
     'bielsko-biała': (49.8225, 19.0444), 'zielona góra': (51.9356, 15.5062), 'opole': (50.6721, 17.9253)
 }
 
-def geocode_address(street='', city='', voivodeship=''):
-    """Zamienia adres/miasto na współrzędne (lat, lng) używając Nominatim API z polskim słownikiem rezerwowym."""
-    city_clean = (city or '').strip()
-    street_clean = (street or '').strip()
+def clean_street_name(street_str):
+    """Usuwa skróty typu 'ul.', 'al.', 'pl.' itp. dla ułatwienia geokodowania."""
+    if not street_str:
+        return ''
+    cleaned = re.sub(r'^(ul\.|ulica|al\.|aleja|pl\.|plac)\s+', '', street_str.strip(), flags=re.IGNORECASE)
+    return cleaned.strip()
 
-    if not city_clean and not street_clean:
+def geocode_address(street='', city='', voivodeship=''):
+    """Zamienia adres/miasto na współrzędne (lat, lng) używając strukturalnego Nominatim API z polskim słownikiem rezerwowym."""
+    city_clean = (city or '').strip()
+    street_raw = (street or '').strip()
+    street_clean = clean_street_name(street_raw)
+
+    if not city_clean and not street_clean and not street_raw:
         return None, None
 
-    # Zapytania strukturalne lub precyzyjne
+    # 1. Próba zapytania strukturalnego (street, city, country)
+    if street_clean or street_raw:
+        try:
+            params = {
+                'format': 'json',
+                'street': street_clean or street_raw,
+                'country': 'Polska',
+                'limit': 1
+            }
+            if city_clean:
+                params['city'] = city_clean
+
+            url = f"https://nominatim.openstreetmap.org/search?{urllib.parse.urlencode(params)}"
+            req = urllib.request.Request(url, headers={'User-Agent': 'CRM-Python-Application/1.0'})
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                data = json.loads(resp.read().decode('utf-8'))
+                if data and len(data) > 0:
+                    return float(data[0]['lat']), float(data[0]['lon'])
+        except Exception:
+            pass
+
+    # 2. Próba zapytania tekstowego z wyczyszczoną ulicą
     queries = []
     if street_clean and city_clean:
         queries.append(f"{street_clean}, {city_clean}, Polska")
+    if street_raw and city_clean and street_raw != street_clean:
+        queries.append(f"{street_raw}, {city_clean}, Polska")
     if street_clean:
         queries.append(f"{street_clean}, Polska")
     if city_clean:
@@ -57,7 +88,7 @@ def geocode_address(street='', city='', voivodeship=''):
         except Exception:
             pass
 
-    # Próba rezerwowa: słownik miast
+    # 3. Próba rezerwowa: słownik miast
     if city_clean:
         city_lower = city_clean.lower()
         if city_lower in POLISH_CITY_COORDS:
@@ -309,13 +340,16 @@ def update_contact_coordinates(contact_id, lat, lng):
 
 def batch_geocode_contacts():
     """Przetwarza istniejące kontakty bez współrzędnych i uzupełnia latitude/longitude w bazie."""
-    with get_db_conn() as conn:
-        contacts = conn.execute("SELECT id, street, city, voivodeship FROM contacts WHERE latitude IS NULL OR longitude IS NULL").fetchall()
-        for c in contacts:
-            lat, lng = geocode_address(c['street'], c['city'], c['voivodeship'])
-            if lat is not None and lng is not None:
-                conn.execute("UPDATE contacts SET latitude = ?, longitude = ? WHERE id = ?", (lat, lng, c['id']))
-        conn.commit()
+    try:
+        with get_db_conn() as conn:
+            contacts = conn.execute("SELECT id, street, city, voivodeship FROM contacts WHERE latitude IS NULL OR longitude IS NULL").fetchall()
+            for c in contacts:
+                lat, lng = geocode_address(c['street'], c['city'], c['voivodeship'])
+                if lat is not None and lng is not None:
+                    conn.execute("UPDATE contacts SET latitude = ?, longitude = ? WHERE id = ?", (lat, lng, c['id']))
+            conn.commit()
+    except Exception:
+        pass
 
 def validate_contact_form(form):
     errors = []
