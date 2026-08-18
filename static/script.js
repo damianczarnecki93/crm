@@ -559,31 +559,53 @@ function renderCalendar() {
     calendar.render();
 }
 
-    // --- Mapa Leaflet i Geolokalizacja ---
-    let leafletMap = null;
+    // --- Mapa MapLibre GL JS ---
+    let maplibreMap = null;
     let mapMarkers = [];
+
+    const maplibreStyle = {
+        'version': 8,
+        'sources': {
+            'osm-tiles': {
+                'type': 'raster',
+                'tiles': [
+                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
+                ],
+                'tileSize': 256,
+                'attribution': '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }
+        },
+        'layers': [
+            {
+                'id': 'osm-tiles-layer',
+                'type': 'raster',
+                'source': 'osm-tiles',
+                'minzoom': 0,
+                'maxzoom': 19
+            }
+        ]
+    };
 
     function renderMap(contacts) {
         const mapView = document.getElementById('map-view');
-        if (!mapView || typeof L === 'undefined') return;
+        if (!mapView || typeof maplibregl === 'undefined') return;
 
-        if (!leafletMap) {
-            leafletMap = L.map('leaflet-map').setView([52.0693, 19.4803], 6);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; OpenStreetMap contributors'
-            }).addTo(leafletMap);
+        if (!maplibreMap) {
+            maplibreMap = new maplibregl.Map({
+                container: 'maplibre-map',
+                style: maplibreStyle,
+                center: [19.4803, 52.0693],
+                zoom: 5.5
+            });
+            maplibreMap.addControl(new maplibregl.NavigationControl());
         }
 
-        mapMarkers.forEach(m => leafletMap.removeLayer(m));
+        mapMarkers.forEach(m => m.remove());
         mapMarkers = [];
 
-        // Filtrowanie kontaktów posiadających geolokalizację
         const validContacts = contacts.filter(c => c.latitude !== null && c.longitude !== null && !isNaN(c.latitude) && !isNaN(c.longitude));
-
-        // Śledzenie nakładających się punktów dla zachowania przesunięcia (jitter/spiral)
         const coordCounts = {};
-
-        const bounds = [];
+        const bounds = new maplibregl.LngLatBounds();
 
         validContacts.forEach((c) => {
             const key = `${c.latitude.toFixed(4)},${c.longitude.toFixed(4)}`;
@@ -593,7 +615,6 @@ function renderCalendar() {
             let finalLat = c.latitude;
             let finalLng = c.longitude;
 
-            // Jeśli punkt się powtarza, dodaj niewielkie przesunięcie po spirali/kołe
             if (count > 0) {
                 const angle = count * 1.2;
                 const distance = 0.002 * Math.sqrt(count);
@@ -601,25 +622,31 @@ function renderCalendar() {
                 finalLng += distance * Math.sin(angle);
             }
 
-            bounds.push([finalLat, finalLng]);
+            bounds.extend([finalLng, finalLat]);
 
-            const marker = L.marker([finalLat, finalLng]).addTo(leafletMap);
             const locationText = `${c.city || ''} ${c.street || ''}`.trim() || 'Brak dokładnego adresu';
-            marker.bindPopup(`
+
+            const popup = new maplibregl.Popup({ offset: 25 }).setHTML(`
                 <div style="font-family: var(--font-family); font-size: 0.9rem;">
                     <strong><a href="/contact/${c.id}" style="color: var(--primary-color); font-weight: 600;">${c.name}</a></strong><br>
                     <span style="color: #666;"><i class="fas fa-map-marker-alt"></i> ${locationText}</span><br>
                     <span style="display: inline-block; margin-top: 4px; padding: 2px 6px; border-radius: 4px; background: #e0f2fe; color: #0369a1; font-size: 0.75rem;">Status: ${c.status}</span>
                 </div>
             `);
+
+            const marker = new maplibregl.Marker({ color: '#2563eb' })
+                .setLngLat([finalLng, finalLat])
+                .setPopup(popup)
+                .addTo(maplibreMap);
+
             mapMarkers.push(marker);
         });
 
-        if (bounds.length > 0) {
-            leafletMap.fitBounds(bounds, { padding: [30, 30], maxZoom: 14 });
+        if (validContacts.length > 0) {
+            maplibreMap.fitBounds(bounds, { padding: 40, maxZoom: 14 });
         }
 
-        setTimeout(() => leafletMap.invalidateSize(), 300);
+        setTimeout(() => maplibreMap.resize(), 300);
     }
 
     // --- Powiadomienia ---
