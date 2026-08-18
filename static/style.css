@@ -31,7 +31,11 @@ body.dark-theme .stat-card,
 body.dark-theme .contact-card,
 body.dark-theme .history-section,
 body.dark-theme .modal-content,
-body.dark-theme .edit-form-container {
+body.dark-theme .edit-form-container,
+body.dark-theme .drawer-content,
+body.dark-theme .history-entry,
+body.dark-theme #hamburger-dropdown,
+body.dark-theme #notification-dropdown {
     background-color: #1e293b !important;
     color: #f8fafc !important;
     border-color: #334155 !important;
@@ -49,6 +53,20 @@ body.dark-theme thead th {
     background-color: #334155 !important;
     color: #cbd5e1 !important;
 }
+
+body.dark-theme tr[data-contact-id]:hover {
+    background-color: #334155 !important;
+}
+
+body.dark-theme .status-aktywny { background-color: #064e3b !important; color: #ecfdf5 !important; }
+body.dark-theme .status-kontakt { background-color: #1e3a8a !important; color: #eff6ff !important; }
+body.dark-theme .status-utracony { background-color: #881337 !important; color: #fff1f2 !important; }
+body.dark-theme .status-lojalny { background-color: #713f12 !important; color: #fefce8 !important; }
+body.dark-theme .status-nieaktywny { background-color: #334155 !important; color: #f8fafc !important; }
+
+body.dark-theme a { color: #60a5fa !important; }
+body.dark-theme .button-secondary { background-color: #334155 !important; color: #f8fafc !important; }
+body.dark-theme .button-secondary:hover { background-color: #475569 !important; }
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;

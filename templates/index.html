@@ -150,56 +150,72 @@
                         </div>
                     </div>
 
-                    <div style="display: flex; gap: 8px;">
+                    <div style="display: flex; gap: 8px; position: relative;">
                         <button type="button" id="toggle-dark-mode" class="button-secondary" title="Przełącz tryb ciemny/jasny">
                             <i class="fas fa-moon"></i>
                         </button>
                         <a href="{{ url_for('api.export_csv') }}" id="export-btn" class="button-secondary" title="Eksportuj do CSV">
                             <i class="fas fa-file-download"></i> CSV
                         </a>
-                        <button type="button" id="toggle-advanced-filters" class="button-secondary" title="Filtry zaawansowane">
-                            <i class="fas fa-filter"></i>
+
+                        <!-- Hamburger Menu Button -->
+                        <button type="button" id="hamburger-menu-btn" class="button-secondary" title="Opcje i narzędzia">
+                            <i class="fas fa-bars"></i> Menu
                         </button>
-                        <button type="button" id="toggle-column-selector" class="button-secondary" title="Wybierz kolumny">
-                            <i class="fas fa-columns"></i>
-                        </button>
-                        <button type="button" id="btn-missing-data-wizard" class="button-secondary" title="Uzupełnij brakujące dane" style="background-color: #d97706; color: white;">
-                            <i class="fas fa-wrench"></i> Uzupełnij dane
-                        </button>
-                    </div>
-                </div>
-                
-                <div id="advanced-filters" class="hidden" style="margin-top: 8px;">
-                    <div class="filter-group">
-                        <label for="filter_city">Miasto:</label>
-                        <input type="text" id="filter_city" name="filter_city" value="{{ filter_city or '' }}" placeholder="np. Warszawa">
-                    </div>
-                    <div class="filter-group">
-                        <label for="filter_status">Status:</label>
-                        <select id="filter_status" name="filter_status">
-                            <option value="">-- Każdy --</option>
-                            <option value="nowy" {% if filter_status == 'nowy' %}selected{% endif %}>Nowy</option>
-                            <option value="aktywny" {% if filter_status == 'aktywny' %}selected{% endif %}>Aktywny</option>
-                            <option value="kontakt" {% if filter_status == 'kontakt' %}selected{% endif %}>Kontakt</option>
-                            <option value="utracony" {% if filter_status == 'utracony' %}selected{% endif %}>Utracony</option>
-                            <option value="lojalny" {% if filter_status == 'lojalny' %}selected{% endif %}>Lojalny</option>
-                            <option value="nieaktywny" {% if filter_status == 'nieaktywny' %}selected{% endif %}>Nieaktywny</option>
-                        </select>
+
+                        <!-- Hamburger Dropdown Panel -->
+                        <div id="hamburger-dropdown" class="hidden" style="position: absolute; right: 0; top: 45px; width: 320px; background: var(--bg-card, #ffffff); border: 1px solid var(--border-color); border-radius: 8px; box-shadow: var(--shadow-md); z-index: 1000; padding: 16px; display: flex; flex-direction: column; gap: 16px;">
+
+                            <!-- Sekcja Narzędzi -->
+                            <div style="border-bottom: 1px solid var(--border-color); padding-bottom: 12px;">
+                                <h4 style="margin: 0 0 8px 0; font-size: 0.9rem; color: var(--primary-color);"><i class="fas fa-tools"></i> Narzędzia</h4>
+                                <button type="button" id="btn-missing-data-wizard" class="button-secondary full-width" style="background-color: #d97706; color: white; justify-content: flex-start;">
+                                    <i class="fas fa-wrench"></i> Uzupełnij dane klientów
+                                </button>
+                            </div>
+
+                            <!-- Sekcja Filtrów Zaawansowanych -->
+                            <div style="border-bottom: 1px solid var(--border-color); padding-bottom: 12px;">
+                                <h4 style="margin: 0 0 8px 0; font-size: 0.9rem; color: var(--primary-color);"><i class="fas fa-filter"></i> Filtry zaawansowane</h4>
+                                <div class="filter-group" style="margin-bottom: 8px;">
+                                    <label for="filter_city">Miasto:</label>
+                                    <input type="text" id="filter_city" name="filter_city" value="{{ filter_city or '' }}" placeholder="np. Warszawa" style="margin-bottom: 0;">
+                                </div>
+                                <div class="filter-group">
+                                    <label for="filter_status">Status:</label>
+                                    <select id="filter_status" name="filter_status" style="margin-bottom: 0;">
+                                        <option value="">-- Każdy --</option>
+                                        <option value="nowy" {% if filter_status == 'nowy' %}selected{% endif %}>Nowy</option>
+                                        <option value="aktywny" {% if filter_status == 'aktywny' %}selected{% endif %}>Aktywny</option>
+                                        <option value="kontakt" {% if filter_status == 'kontakt' %}selected{% endif %}>Kontakt</option>
+                                        <option value="utracony" {% if filter_status == 'utracony' %}selected{% endif %}>Utracony</option>
+                                        <option value="lojalny" {% if filter_status == 'lojalny' %}selected{% endif %}>Lojalny</option>
+                                        <option value="nieaktywny" {% if filter_status == 'nieaktywny' %}selected{% endif %}>Nieaktywny</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Sekcja Kolumn -->
+                            <div>
+                                <h4 style="margin: 0 0 8px 0; font-size: 0.9rem; color: var(--primary-color);"><i class="fas fa-columns"></i> Widoczne kolumny</h4>
+                                <div id="column-selector" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.85rem;">
+                                    <label><input type="checkbox" name="toggle-cols" value="col-street" checked> Ulica</label>
+                                    <label><input type="checkbox" name="toggle-cols" value="col-city" checked> Miasto</label>
+                                    <label><input type="checkbox" name="toggle-cols" value="col-voivodeship" checked> Woj.</label>
+                                    <label><input type="checkbox" name="toggle-cols" value="col-phone" checked> Telefon</label>
+                                    <label><input type="checkbox" name="toggle-cols" value="col-email" checked> E-mail</label>
+                                    <label><input type="checkbox" name="toggle-cols" value="col-nip" checked> NIP</label>
+                                    <label><input type="checkbox" name="toggle-cols" value="col-www" checked> WWW</label>
+                                    <label><input type="checkbox" name="toggle-cols" value="col-notes" checked> Uwagi</label>
+                                    <label><input type="checkbox" name="toggle-cols" value="col-last_note" checked> Notatka</label>
+                                    <label><input type="checkbox" name="toggle-cols" value="col-score" checked> Score</label>
+                                </div>
+                            </div>
+
+                        </div>
                     </div>
                 </div>
             </form>
-            
-            <div id="column-selector" class="hidden">
-                <label><input type="checkbox" name="toggle-cols" value="col-street" checked> Ulica</label>
-                <label><input type="checkbox" name="toggle-cols" value="col-city" checked> Miasto</label>
-                <label><input type="checkbox" name="toggle-cols" value="col-voivodeship" checked> Woj.</label>
-                <label><input type="checkbox" name="toggle-cols" value="col-phone" checked> Telefon</label>
-                <label><input type="checkbox" name="toggle-cols" value="col-email" checked> E-mail</label>
-                <label><input type="checkbox" name="toggle-cols" value="col-nip" checked> NIP</label>
-                <label><input type="checkbox" name="toggle-cols" value="col-www" checked> WWW</label>
-                <label><input type="checkbox" name="toggle-cols" value="col-notes" checked> Uwagi</label>
-                <label><input type="checkbox" name="toggle-cols" value="col-last_note" checked> Ostatnia Notatka</label>
-            </div>
         </div>
 
         <div id="map-view" class="contacts-container hidden" style="height: 500px; border-radius: 10px; overflow: hidden; margin-top: 16px;">

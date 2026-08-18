@@ -569,7 +569,11 @@ function renderCalendar() {
         'poznan': [52.4064, 16.9252], 'gdańsk': [54.3520, 18.6466], 'gdansk': [54.3520, 18.6466],
         'szczecin': [53.4285, 14.5528], 'bydgoszcz': [53.1235, 18.0084], 'lublin': [51.2465, 22.5684],
         'katowice': [50.2649, 19.0238], 'białystok': [53.1325, 23.1688], 'bialystok': [53.1325, 23.1688],
-        'gdynia': [54.5189, 18.5305], 'częstochowa': [50.8118, 19.1203], 'radom': [51.4027, 21.1471]
+        'gdynia': [54.5189, 18.5305], 'częstochowa': [50.8118, 19.1203], 'czestochowa': [50.8118, 19.1203],
+        'radom': [51.4027, 21.1471], 'sosnowiec': [50.2863, 19.1041], 'toruń': [53.0138, 18.5981],
+        'torun': [53.0138, 18.5981], 'kielce': [50.8703, 20.6275], 'rzeszów': [50.0412, 21.9991],
+        'rzeszow': [50.0412, 21.9991], 'gliwice': [50.2945, 18.6714], 'olsztyn': [53.7784, 20.4801],
+        'bielsko-biała': [49.8225, 19.0444], 'zielona góra': [51.9356, 15.5062], 'opole': [50.6721, 17.9253]
     };
 
     function renderMap(contacts) {
@@ -586,22 +590,24 @@ function renderCalendar() {
         mapMarkers.forEach(m => leafletMap.removeLayer(m));
         mapMarkers = [];
 
-        contacts.forEach((c, idx) => {
+        contacts.forEach((c) => {
             const cityKey = (c.city || '').toLowerCase().trim();
-            let coords = cityCoords[cityKey];
+            const coords = cityCoords[cityKey];
 
-            // Jeśli miasto nie jest znane, przydziel stały punkt na mapie Polski w zależności od ID
-            if (!coords) {
-                const defaultLat = 52.0 + ((c.id * 17) % 200) / 100.0 - 1.0;
-                const defaultLng = 19.0 + ((c.id * 31) % 300) / 100.0 - 1.5;
-                coords = [defaultLat, defaultLng];
+            // Jeśli miasto jest znane w Słowniku, użyj dokładnych współrzędnych miasta (z minimalnym mikro-odstępem na unikalne ID dla nakładających się punktów)
+            let lat, lng;
+            if (coords) {
+                lat = coords[0] + (c.id % 5) * 0.003 - 0.006;
+                lng = coords[1] + ((c.id * 3) % 5) * 0.003 - 0.006;
+            } else {
+                // Gdy miasto nie jest wpisane lub nieznane w słowniku, wylicz powtarzalną pozycję na bazie ID w obrębie centralnej Polski
+                lat = 52.0 + ((c.id * 17) % 180) / 100.0 - 0.9;
+                lng = 19.0 + ((c.id * 31) % 250) / 100.0 - 1.25;
             }
 
-            const lat = coords[0] + (Math.sin(c.id) * 0.02);
-            const lng = coords[1] + (Math.cos(c.id) * 0.02);
-
             const marker = L.marker([lat, lng]).addTo(leafletMap);
-            marker.bindPopup(`<b><a href="/contact/${c.id}">${c.name}</a></b><br>${c.city || 'Lokalizacja nieokreślona'} ${c.street || ''}<br>Status: ${c.status}`);
+            const locationText = c.city ? `${c.city} ${c.street || ''}` : 'Brak podanego miasta';
+            marker.bindPopup(`<b><a href="/contact/${c.id}">${c.name}</a></b><br>${locationText}<br>Status: ${c.status}`);
             mapMarkers.push(marker);
         });
 
@@ -767,19 +773,22 @@ function renderCalendar() {
         link.addEventListener('click', (e) => { e.preventDefault(); applySort(link.dataset.sort); });
     });
     
-    // --- Obsługa paneli filtrów i kolumn ---
-    const toggleAdvancedBtn = document.getElementById('toggle-advanced-filters');
-    const advancedFilters = document.getElementById('advanced-filters');
-    const toggleColumnsBtn = document.getElementById('toggle-column-selector');
-    const columnSelector = document.getElementById('column-selector');
-    const currentUrlParams = new URLSearchParams(window.location.search);
-    if (toggleAdvancedBtn) {
-        toggleAdvancedBtn.addEventListener('click', () => { advancedFilters.classList.toggle('hidden'); });
-        if (currentUrlParams.get('filter_city') || currentUrlParams.get('filter_status')) {
-            advancedFilters.classList.remove('hidden');
-        }
+    // --- Obsługa menu Hamburgera ---
+    const hamburgerBtn = document.getElementById('hamburger-menu-btn');
+    const hamburgerDropdown = document.getElementById('hamburger-dropdown');
+
+    if (hamburgerBtn && hamburgerDropdown) {
+        hamburgerBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            hamburgerDropdown.classList.toggle('hidden');
+        });
+        hamburgerDropdown.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+        document.addEventListener('click', () => {
+            hamburgerDropdown.classList.add('hidden');
+        });
     }
-    if (toggleColumnsBtn) { toggleColumnsBtn.addEventListener('click', () => { columnSelector.classList.toggle('hidden'); }); }
 
     // --- Obsługa widoczności kolumn ---
     const columnCheckboxes = document.querySelectorAll('#column-selector input[type="checkbox"]');
