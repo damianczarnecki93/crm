@@ -145,17 +145,6 @@ def filter_contacts():
     sorted_contacts = get_filtered_contacts_from_db(
         search_query, filter_city, filter_status, sort_by, sort_order
     )
-    # Upewnij się, że kontakty bez lat/lng zostaną geokodowane przy pobieraniu
-    for c in sorted_contacts:
-        if c.get('latitude') is None or c.get('longitude') is None:
-            lat, lng = geocode_address(c.get('street'), c.get('city'), c.get('voivodeship'))
-            if lat is not None and lng is not None:
-                c['latitude'] = lat
-                c['longitude'] = lng
-                with get_db_conn() as conn:
-                    conn.execute("UPDATE contacts SET latitude = ?, longitude = ? WHERE id = ?", (lat, lng, c['id']))
-                    conn.commit()
-
     return jsonify([dict(contact) for contact in sorted_contacts])
 
 

@@ -37,27 +37,27 @@ def geocode_address(street='', city='', voivodeship=''):
     if not city_clean and not street_clean:
         return None, None
 
-    query_parts = []
+    # Zapytania strukturalne lub precyzyjne
+    queries = []
+    if street_clean and city_clean:
+        queries.append(f"{street_clean}, {city_clean}, Polska")
     if street_clean:
-        query_parts.append(street_clean)
+        queries.append(f"{street_clean}, Polska")
     if city_clean:
-        query_parts.append(city_clean)
-    query_parts.append("Polska")
+        queries.append(f"{city_clean}, Polska")
 
-    query_str = ", ".join(query_parts)
+    for q in queries:
+        try:
+            url = f"https://nominatim.openstreetmap.org/search?format=json&q={urllib.parse.quote(q)}&limit=1"
+            req = urllib.request.Request(url, headers={'User-Agent': 'CRM-Python-Application/1.0'})
+            with urllib.request.urlopen(req, timeout=2) as resp:
+                data = json.loads(resp.read().decode('utf-8'))
+                if data and len(data) > 0:
+                    return float(data[0]['lat']), float(data[0]['lon'])
+        except Exception:
+            pass
 
-    # Próba odpytania Nominatim API
-    try:
-        url = f"https://nominatim.openstreetmap.org/search?format=json&q={urllib.parse.quote(query_str)}&limit=1"
-        req = urllib.request.Request(url, headers={'User-Agent': 'CRM-Python-Application/1.0'})
-        with urllib.request.urlopen(req, timeout=3) as resp:
-            data = json.loads(resp.read().decode('utf-8'))
-            if data and len(data) > 0:
-                return float(data[0]['lat']), float(data[0]['lon'])
-    except Exception:
-        pass
-
-    # Próba rezerwowa: jeśli nie podano ulicy lub Nominatim zawiódł, użyj słownika miast
+    # Próba rezerwowa: słownik miast
     if city_clean:
         city_lower = city_clean.lower()
         if city_lower in POLISH_CITY_COORDS:
