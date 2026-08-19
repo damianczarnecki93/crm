@@ -63,9 +63,89 @@ def get_db_conn():
         err_msg = str(e).lower()
         if "malformed" in err_msg or "disk image" in err_msg or "not a database" in err_msg:
             check_and_recover_db(db_path)
-            init_db()
-            return _create_raw_conn(db_path)
+            conn = _create_raw_conn(db_path)
+            init_db_schema(conn)
+            return conn
         raise e
+
+def init_db_schema(conn):
+    cursor = conn.cursor()
+    cursor.execute('DROP TABLE IF EXISTS sales_history;')
+    cursor.execute('DROP TABLE IF EXISTS contact_history;')
+    cursor.execute('DROP TABLE IF EXISTS contacts;')
+
+    cursor.execute('''
+        CREATE TABLE contacts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            street TEXT,
+            city TEXT,
+            voivodeship TEXT,
+            phone TEXT,
+            email TEXT,
+            nip TEXT,
+            www TEXT,
+            notes TEXT,
+            reminder_date DATE,
+            last_contact_date DATE,
+            status TEXT NOT NULL DEFAULT 'nowy',
+            lost_reason TEXT,
+            latitude REAL,
+            longitude REAL
+        )''')
+
+    cursor.execute('''
+        CREATE TABLE contact_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            contact_id INTEGER NOT NULL,
+            change_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            change_description TEXT NOT NULL,
+            FOREIGN KEY (contact_id) REFERENCES contacts (id) ON DELETE CASCADE
+        )''')
+
+    cursor.execute('''
+        CREATE TABLE sales_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            contact_id INTEGER NOT NULL,
+            product_name TEXT NOT NULL,
+            amount REAL NOT NULL,
+            sale_date DATE NOT NULL,
+            notes TEXT,
+            FOREIGN KEY (contact_id) REFERENCES contacts (id) ON DELETE CASCADE
+        )''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS delegations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            date DATE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS delegation_stops (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            delegation_id INTEGER NOT NULL,
+            stop_order INTEGER NOT NULL,
+            stop_type TEXT NOT NULL DEFAULT 'custom',
+            name TEXT NOT NULL,
+            address TEXT,
+            latitude REAL,
+            longitude REAL,
+            visit_duration_minutes INTEGER DEFAULT 0,
+            contact_id INTEGER,
+            FOREIGN KEY (delegation_id) REFERENCES delegations (id) ON DELETE CASCADE,
+            FOREIGN KEY (contact_id) REFERENCES contacts (id) ON DELETE SET NULL
+        )''')
+    conn.commit()
+
+def init_db():
+    db_path = current_app.config['DATABASE_PATH']
+    conn = _create_raw_conn(db_path)
+    try:
+        init_db_schema(conn)
+    finally:
+        conn.close()
 
 import urllib.request
 import urllib.parse
