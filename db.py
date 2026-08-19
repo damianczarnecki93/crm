@@ -1,15 +1,172 @@
 import os
 import sqlite3
 import re
+import time
 from datetime import datetime, timezone
 from flask import current_app
 
-def get_db_conn():
-    db_path = current_app.config['DATABASE_PATH']
-    conn = sqlite3.connect(db_path)
+def check_and_recover_db(db_path):
+    """Sprawdza spójność bazy danych. Jeśli jest uszkodzona ('malformed'), tworzy kopię zapasową i usuwa zepsuty plik."""
+    if not os.path.exists(db_path):
+        return
+
+    is_corrupted = False
+    try:
+        conn = sqlite3.connect(db_path, timeout=5.0)
+        try:
+            res = conn.execute("PRAGMA quick_check;").fetchone()
+            if not res or res[0] != 'ok':
+                is_corrupted = True
+        finally:
+            conn.close()
+    except (sqlite3.DatabaseError, sqlite3.OperationalError):
+        is_corrupted = True
+    except Exception:
+        pass
+
+    if is_corrupted:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = f"{db_path}.corrupted_{timestamp}"
+
+        # Usuń ewentualne pliki -wal i -shm
+        for ext in ['', '-wal', '-shm']:
+            f = db_path + ext if ext else db_path
+            if os.path.exists(f):
+                if ext == '':
+                    try:
+                        os.rename(f, backup_path)
+                    except Exception:
+                        try:
+                            os.remove(f)
+                        except Exception:
+                            pass
+                else:
+                    try:
+                        os.remove(f)
+                    except Exception:
+                        pass
+
+def _create_raw_conn(db_path):
+    conn = sqlite3.connect(db_path, timeout=30.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
+    conn.execute("PRAGMA busy_timeout = 30000;")
+    try:
+        conn.execute("PRAGMA journal_mode = WAL;")
+    except Exception:
+        pass
     return conn
+
+def get_db_conn():
+    db_path = current_app.config['DATABASE_PATH']
+    conn = None
+    try:
+        conn = _create_raw_conn(db_path)
+        conn.execute("SELECT 1 FROM contacts LIMIT 1;")
+        return conn
+    except sqlite3.OperationalError as e:
+        if "no such table: contacts" in str(e):
+            return conn
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+        raise e
+    except sqlite3.DatabaseError as e:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+        err_msg = str(e).lower()
+        if "malformed" in err_msg or "disk image" in err_msg or "not a database" in err_msg:
+            check_and_recover_db(db_path)
+            new_conn = _create_raw_conn(db_path)
+            init_db_schema(new_conn)
+            return new_conn
+        raise e
+
+def init_db_schema(conn):
+    cursor = conn.cursor()
+    cursor.execute('DROP TABLE IF EXISTS sales_history;')
+    cursor.execute('DROP TABLE IF EXISTS contact_history;')
+    cursor.execute('DROP TABLE IF EXISTS delegation_stops;')
+    cursor.execute('DROP TABLE IF EXISTS delegations;')
+    cursor.execute('DROP TABLE IF EXISTS contacts;')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS contacts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            street TEXT,
+            city TEXT,
+            voivodeship TEXT,
+            phone TEXT,
+            email TEXT,
+            nip TEXT,
+            www TEXT,
+            notes TEXT,
+            reminder_date DATE,
+            last_contact_date DATE,
+            status TEXT NOT NULL DEFAULT 'nowy',
+            lost_reason TEXT,
+            latitude REAL,
+            longitude REAL
+        )''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS contact_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            contact_id INTEGER NOT NULL,
+            change_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            change_description TEXT NOT NULL,
+            FOREIGN KEY (contact_id) REFERENCES contacts (id) ON DELETE CASCADE
+        )''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS sales_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            contact_id INTEGER NOT NULL,
+            product_name TEXT NOT NULL,
+            amount REAL NOT NULL,
+            sale_date DATE NOT NULL,
+            notes TEXT,
+            FOREIGN KEY (contact_id) REFERENCES contacts (id) ON DELETE CASCADE
+        )''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS delegations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            date DATE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS delegation_stops (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            delegation_id INTEGER NOT NULL,
+            stop_order INTEGER NOT NULL,
+            stop_type TEXT NOT NULL DEFAULT 'custom',
+            name TEXT NOT NULL,
+            address TEXT,
+            latitude REAL,
+            longitude REAL,
+            visit_duration_minutes INTEGER DEFAULT 0,
+            contact_id INTEGER,
+            FOREIGN KEY (delegation_id) REFERENCES delegations (id) ON DELETE CASCADE,
+            FOREIGN KEY (contact_id) REFERENCES contacts (id) ON DELETE SET NULL
+        )''')
+    conn.commit()
+
+def init_db():
+    db_path = current_app.config['DATABASE_PATH']
+    conn = _create_raw_conn(db_path)
+    try:
+        init_db_schema(conn)
+    finally:
+        conn.close()
 
 import urllib.request
 import urllib.parse
@@ -30,10 +187,14 @@ POLISH_CITY_COORDS = {
 }
 
 def clean_street_name(street_str):
-    """Usuwa skróty typu 'ul.', 'al.', 'pl.' itp. dla ułatwienia geokodowania."""
+    """Usuwa skróty typu 'ul.', 'al.', 'pl.' oraz numery mieszkań (np. /12, m. 12) dla dokładniejszego geokodowania."""
     if not street_str:
         return ''
     cleaned = re.sub(r'^(ul\.|ulica|al\.|aleja|pl\.|plac)\s+', '', street_str.strip(), flags=re.IGNORECASE)
+    # Usuwanie numeru mieszkania/lokalu (np. "Jasna 5/12" -> "Jasna 5", "Jasna 5 m. 12" -> "Jasna 5")
+    cleaned = re.sub(r'/\d+\w*$', '', cleaned)
+    cleaned = re.sub(r'\s+m\.\s*\d+.*$', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'\s+lok\.\s*\d+.*$', '', cleaned, flags=re.IGNORECASE)
     return cleaned.strip()
 
 def geocode_address(street='', city='', voivodeship=''):
@@ -339,15 +500,21 @@ def update_contact_coordinates(contact_id, lat, lng):
         conn.commit()
 
 def batch_geocode_contacts():
-    """Przetwarza istniejące kontakty bez współrzędnych i uzupełnia latitude/longitude w bazie."""
+    """Przetwarza istniejące kontakty bez współrzędnych i uzupełnia latitude/longitude w bazie bez blokowania połączeń."""
     try:
         with get_db_conn() as conn:
-            contacts = conn.execute("SELECT id, street, city, voivodeship FROM contacts WHERE latitude IS NULL OR longitude IS NULL").fetchall()
-            for c in contacts:
-                lat, lng = geocode_address(c['street'], c['city'], c['voivodeship'])
-                if lat is not None and lng is not None:
-                    conn.execute("UPDATE contacts SET latitude = ?, longitude = ? WHERE id = ?", (lat, lng, c['id']))
-            conn.commit()
+            contacts = [dict(c) for c in conn.execute("SELECT id, street, city, voivodeship FROM contacts WHERE latitude IS NULL OR longitude IS NULL").fetchall()]
+
+        for c in contacts:
+            lat, lng = geocode_address(c['street'], c['city'], c['voivodeship'])
+            if lat is not None and lng is not None:
+                try:
+                    with get_db_conn() as conn:
+                        conn.execute("UPDATE contacts SET latitude = ?, longitude = ? WHERE id = ?", (lat, lng, c['id']))
+                        conn.commit()
+                except Exception:
+                    pass
+            time.sleep(1) # Przerwa szanująca darmowe API Nominatim
     except Exception:
         pass
 

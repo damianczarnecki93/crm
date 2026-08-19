@@ -186,11 +186,52 @@ document.addEventListener('DOMContentLoaded', function() {
     const lostReasonModal = document.getElementById('lost-reason-modal');
     const closeLostReasonBtn = document.getElementById('close-lost-reason-modal');
     const lostReasonForm = document.getElementById('lost-reason-form');
+    const cancelLostReasonBtn = document.getElementById('btn-cancel-lost-reason');
+    const skipLostReasonBtn = document.getElementById('btn-skip-lost-reason');
 
     if (closeLostReasonBtn && lostReasonModal) {
         closeLostReasonBtn.addEventListener('click', () => lostReasonModal.classList.add('hidden'));
         lostReasonModal.addEventListener('click', (e) => {
             if (e.target === lostReasonModal) lostReasonModal.classList.add('hidden');
+        });
+    }
+
+    if (cancelLostReasonBtn) {
+        cancelLostReasonBtn.addEventListener('click', () => {
+            if (lostReasonModal) lostReasonModal.classList.add('hidden');
+        });
+    }
+
+    if (skipLostReasonBtn) {
+        skipLostReasonBtn.addEventListener('click', () => {
+            const contactId = document.getElementById('lost-reason-contact-id').value;
+            if (!contactId) return;
+
+            showSpinner();
+            fetch(`/contact/${contactId}/update_status`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                },
+                body: JSON.stringify({ status: 'utracony', lost_reason: '' })
+            })
+            .then(res => res.json())
+            .then(data => {
+                hideSpinner();
+                if (data.success) {
+                    showToast('Zmieniono status na Utracony', 'info');
+                    lostReasonModal.classList.add('hidden');
+                    fetchFilteredContacts();
+                    refreshStats();
+                } else {
+                    showToast(data.message || 'Błąd zmiany statusu.', 'danger');
+                }
+            })
+            .catch(() => {
+                hideSpinner();
+                showToast('Błąd komunikacji z serwerem.', 'danger');
+            });
         });
     }
 
@@ -372,19 +413,20 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    function addEventListenersToRows(rows) {
-        rows.forEach(row => {
-            row.addEventListener('click', function(event) {
-                if (event.target.tagName === 'A' || event.target.closest('a') || event.target.tagName === 'BUTTON' || event.target.closest('button')) return;
+    function attachStatusSelectListeners(container) {
+        container.querySelectorAll('.status-select').forEach(select => {
+            select.addEventListener('click', (e) => e.stopPropagation());
+            select.addEventListener('change', function(e) {
+                e.stopPropagation();
                 const contactId = this.dataset.contactId;
-                let currentStatus = this.dataset.currentStatus;
-                const currentIndex = statuses.indexOf(currentStatus);
-                const nextIndex = (currentIndex + 1) % statuses.length;
-                const newStatus = statuses[nextIndex];
+                const newStatus = this.value;
+                const tr = this.closest('tr');
+                const prevStatus = tr ? tr.dataset.currentStatus : 'nowy';
 
                 if (newStatus === 'utracony') {
                     document.getElementById('lost-reason-contact-id').value = contactId;
                     document.getElementById('lost-reason-modal')?.classList.remove('hidden');
+                    this.value = prevStatus;
                     return;
                 }
 
@@ -399,15 +441,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        this.className = this.className.replace(/status-\w+/, `status-${newStatus}`);
-                        this.dataset.currentStatus = newStatus;
-                        const iconSpan = this.querySelector('.status-icon');
-                        if (iconSpan) {
-                            iconSpan.innerHTML = getStatusIconHTML(newStatus);
-                            iconSpan.title = `Status: ${newStatus}`;
+                        if (tr) {
+                            tr.className = tr.className.replace(/status-\w+/, `status-${newStatus}`);
+                            tr.dataset.currentStatus = newStatus;
                         }
+                        showToast(`Zmieniono status na: ${statusLabels[newStatus] || newStatus}`, 'success');
                         refreshStats();
+                    } else {
+                        this.value = prevStatus;
+                        showToast(data.message || 'Błąd zmiany statusu.', 'danger');
                     }
+                })
+                .catch(() => {
+                    this.value = prevStatus;
+                    showToast('Błąd komunikacji z serwerem.', 'danger');
                 });
             });
         });
@@ -419,7 +466,7 @@ function renderTable(contacts) {
     tableBody.innerHTML = '';
 
     if (contacts.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="13">Brak kontaktów pasujących do kryteriów.</td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="14">Brak kontaktów pasujących do kryteriów.</td></tr>';
         return;
     }
 
@@ -444,7 +491,14 @@ function renderTable(contacts) {
 
         row.innerHTML = `
             <td class="col-status">
-                <span class="status-icon" title="Status: ${contact.status}">${getStatusIconHTML(contact.status)}</span>
+                <select class="status-select status-select-${contact.status}" data-contact-id="${contact.id}" style="padding: 2px 4px; border-radius: 4px; font-size: 0.82rem; font-weight: 500; cursor: pointer; border: 1px solid var(--border-color); background: var(--bg-card); color: var(--text-main);">
+                    <option value="nowy" ${contact.status === 'nowy' ? 'selected' : ''}>⭕ Nowy</option>
+                    <option value="aktywny" ${contact.status === 'aktywny' ? 'selected' : ''}>✅ Aktywny</option>
+                    <option value="kontakt" ${contact.status === 'kontakt' ? 'selected' : ''}>📞 Kontakt</option>
+                    <option value="lojalny" ${contact.status === 'lojalny' ? 'selected' : ''}>⭐ Wizyta</option>
+                    <option value="nieaktywny" ${contact.status === 'nieaktywny' ? 'selected' : ''}>🌙 Nieaktywny</option>
+                    <option value="utracony" ${contact.status === 'utracony' ? 'selected' : ''}>🚫 Utracony</option>
+                </select>
             </td>
             <td class="col-name">
                 <a href="/contact/${contact.id}">${contact.name || ''}</a>
@@ -485,10 +539,20 @@ function renderTable(contacts) {
             });
         }
 
+        row.addEventListener('click', (e) => {
+            if (e.target.tagName !== 'A' && !e.target.closest('a') &&
+                e.target.tagName !== 'BUTTON' && !e.target.closest('button') &&
+                e.target.tagName !== 'SELECT' && !e.target.closest('select')) {
+                if (typeof openDrawerFromRow === 'function') {
+                    openDrawerFromRow(row);
+                }
+            }
+        });
+
         tableBody.appendChild(row);
     });
 
-    addEventListenersToRows(tableBody.querySelectorAll('tr[data-contact-id]'));
+    attachStatusSelectListeners(tableBody);
     addEventListenersToLinks(tableBody.querySelectorAll('td.col-name a'));
     updateColumnVisibility();
 }
