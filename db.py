@@ -4,8 +4,41 @@ import re
 from datetime import datetime, timezone
 from flask import current_app
 
-def get_db_conn():
-    db_path = current_app.config['DATABASE_PATH']
+def check_and_recover_db(db_path):
+    """Sprawdza spójność bazy danych. Jeśli jest uszkodzona ('malformed'), tworzy kopię zapasową i usuwa zepsuty plik."""
+    if not os.path.exists(db_path):
+        return
+
+    is_corrupted = False
+    try:
+        conn = sqlite3.connect(db_path, timeout=5.0)
+        res = conn.execute("PRAGMA quick_check;").fetchone()
+        conn.close()
+        if not res or res[0] != 'ok':
+            is_corrupted = True
+    except (sqlite3.DatabaseError, sqlite3.OperationalError):
+        is_corrupted = True
+    except Exception:
+        pass
+
+    if is_corrupted:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = f"{db_path}.corrupted_{timestamp}"
+        try:
+            if os.path.exists(db_path):
+                os.rename(db_path, backup_path)
+            # Usuń również ewentualne pliki -wal i -shm jeśli istnieją
+            for ext in ['-wal', '-shm']:
+                f = db_path + ext
+                if os.path.exists(f):
+                    try:
+                        os.remove(f)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+def _create_raw_conn(db_path):
     conn = sqlite3.connect(db_path, timeout=30.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
@@ -15,6 +48,24 @@ def get_db_conn():
     except Exception:
         pass
     return conn
+
+def get_db_conn():
+    db_path = current_app.config['DATABASE_PATH']
+    try:
+        conn = _create_raw_conn(db_path)
+        conn.execute("SELECT 1 FROM contacts LIMIT 1;")
+        return conn
+    except sqlite3.OperationalError as e:
+        if "no such table: contacts" in str(e):
+            return conn
+        raise e
+    except sqlite3.DatabaseError as e:
+        err_msg = str(e).lower()
+        if "malformed" in err_msg or "disk image" in err_msg or "not a database" in err_msg:
+            check_and_recover_db(db_path)
+            init_db()
+            return _create_raw_conn(db_path)
+        raise e
 
 import urllib.request
 import urllib.parse

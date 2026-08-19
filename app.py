@@ -63,12 +63,19 @@ def create_app():
     app.register_blueprint(delegations_bp)
 
     with app.app_context():
-        from db import migrate_db, batch_geocode_contacts
+        from db import check_and_recover_db, migrate_db, init_db, batch_geocode_contacts
         if os.path.exists(DATABASE_PATH):
-            try:
-                migrate_db()
-            except Exception:
-                pass
+            check_and_recover_db(DATABASE_PATH)
+            if not os.path.exists(DATABASE_PATH):
+                init_db()
+            else:
+                try:
+                    migrate_db()
+                except Exception:
+                    pass
+        else:
+            init_db()
+
         app_ctx = app.app_context()
         def _bg_geocode():
             with app_ctx:
