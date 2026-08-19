@@ -279,3 +279,32 @@ def set_reminder_days(contact_id):
         flash(msg, 'success')
             
     return redirect(url_for('contacts.contact_detail', contact_id=contact_id))
+
+
+@contacts_bp.route('/contact/<int:contact_id>/regeocode', methods=['POST'])
+def regeocode_contact(contact_id):
+    is_json_req = request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest' or 'application/json' in request.headers.get('Accept', '')
+    with get_db_conn() as conn:
+        contact = conn.execute('SELECT street, city, voivodeship FROM contacts WHERE id = ?', (contact_id,)).fetchone()
+        if not contact:
+            if is_json_req:
+                return jsonify({'success': False, 'message': 'Kontakt nie istnieje'}), 404
+            flash('Kontakt nie istnieje.', 'danger')
+            return redirect(url_for('main.index'))
+
+        lat, lng = geocode_address(contact['street'], contact['city'], contact['voivodeship'])
+        conn.execute('UPDATE contacts SET latitude = ?, longitude = ? WHERE id = ?', (lat, lng, contact_id))
+        conn.commit()
+
+    if lat is not None and lng is not None:
+        msg = f'Pomyślnie zaktualizowano geolokalizację: {lat:.5f}, {lng:.5f}'
+        success = True
+    else:
+        msg = 'Nie udało się odnaleźć dokładnych współrzędnych dla podanego adresu.'
+        success = False
+
+    if is_json_req:
+        return jsonify({'success': success, 'message': msg, 'latitude': lat, 'longitude': lng})
+
+    flash(msg, 'success' if success else 'warning')
+    return redirect(url_for('contacts.contact_detail', contact_id=contact_id))

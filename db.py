@@ -6,9 +6,14 @@ from flask import current_app
 
 def get_db_conn():
     db_path = current_app.config['DATABASE_PATH']
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
+    conn.execute("PRAGMA busy_timeout = 30000;")
+    try:
+        conn.execute("PRAGMA journal_mode = WAL;")
+    except Exception:
+        pass
     return conn
 
 import urllib.request
@@ -30,10 +35,14 @@ POLISH_CITY_COORDS = {
 }
 
 def clean_street_name(street_str):
-    """Usuwa skróty typu 'ul.', 'al.', 'pl.' itp. dla ułatwienia geokodowania."""
+    """Usuwa skróty typu 'ul.', 'al.', 'pl.' oraz numery mieszkań (np. /12, m. 12) dla dokładniejszego geokodowania."""
     if not street_str:
         return ''
     cleaned = re.sub(r'^(ul\.|ulica|al\.|aleja|pl\.|plac)\s+', '', street_str.strip(), flags=re.IGNORECASE)
+    # Usuwanie numeru mieszkania/lokalu (np. "Jasna 5/12" -> "Jasna 5", "Jasna 5 m. 12" -> "Jasna 5")
+    cleaned = re.sub(r'/\d+\w*$', '', cleaned)
+    cleaned = re.sub(r'\s+m\.\s*\d+.*$', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'\s+lok\.\s*\d+.*$', '', cleaned, flags=re.IGNORECASE)
     return cleaned.strip()
 
 def geocode_address(street='', city='', voivodeship=''):
@@ -339,15 +348,21 @@ def update_contact_coordinates(contact_id, lat, lng):
         conn.commit()
 
 def batch_geocode_contacts():
-    """Przetwarza istniejące kontakty bez współrzędnych i uzupełnia latitude/longitude w bazie."""
+    """Przetwarza istniejące kontakty bez współrzędnych i uzupełnia latitude/longitude w bazie bez blokowania połączeń."""
     try:
         with get_db_conn() as conn:
-            contacts = conn.execute("SELECT id, street, city, voivodeship FROM contacts WHERE latitude IS NULL OR longitude IS NULL").fetchall()
-            for c in contacts:
-                lat, lng = geocode_address(c['street'], c['city'], c['voivodeship'])
-                if lat is not None and lng is not None:
-                    conn.execute("UPDATE contacts SET latitude = ?, longitude = ? WHERE id = ?", (lat, lng, c['id']))
-            conn.commit()
+            contacts = [dict(c) for c in conn.execute("SELECT id, street, city, voivodeship FROM contacts WHERE latitude IS NULL OR longitude IS NULL").fetchall()]
+
+        for c in contacts:
+            lat, lng = geocode_address(c['street'], c['city'], c['voivodeship'])
+            if lat is not None and lng is not None:
+                try:
+                    with get_db_conn() as conn:
+                        conn.execute("UPDATE contacts SET latitude = ?, longitude = ? WHERE id = ?", (lat, lng, c['id']))
+                        conn.commit()
+                except Exception:
+                    pass
+            time.sleep(1) # Przerwa szanująca darmowe API Nominatim
     except Exception:
         pass
 

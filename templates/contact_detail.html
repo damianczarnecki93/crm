@@ -298,18 +298,26 @@
             transition: all 0.2s;
         }
 
-        button[type="submit"]:not(.button-danger):not(.button-danger-text):not(.delete-btn-note) {
+        button[type="submit"]:not(.button-danger):not(.button-danger-text):not(.delete-btn-note):not(.btn-regeocode) {
             background-color: var(--primary-color);
             color: white;
         }
 
-        button[type="submit"]:not(.button-danger):not(.button-danger-text):not(.delete-btn-note):hover {
+        button[type="submit"]:not(.button-danger):not(.button-danger-text):not(.delete-btn-note):not(.btn-regeocode):hover {
             background-color: var(--primary-hover);
         }
 
         .button-secondary {
             background-color: #e2e8f0;
             color: #334155;
+        }
+
+        .btn-regeocode {
+            width: auto !important;
+            margin: 0 !important;
+            display: inline-flex !important;
+            background-color: #e2e8f0 !important;
+            color: #334155 !important;
         }
 
         .button-secondary:hover {
@@ -481,6 +489,17 @@
         <div class="contact-card">
             <h2><i class="fas fa-id-card"></i> Dane i Ustawienia</h2>
             
+            <p>
+                <strong><i class="fas fa-info-circle"></i> Status:</strong>
+                <span>{{ contact.status|capitalize }}</span>
+            </p>
+            {% if contact.status == 'utracony' or contact.lost_reason %}
+            <p style="color: var(--danger-color); font-weight: 500;">
+                <strong><i class="fas fa-exclamation-triangle"></i> Powód utraty:</strong>
+                <span id="contact-lost-reason">{{ contact.lost_reason or 'Nieokreślony' }}</span>
+            </p>
+            {% endif %}
+
             <p><strong><i class="fas fa-road"></i> Ulica:</strong> {{ contact.street or 'Brak' }}</p>
             <p><strong><i class="fas fa-city"></i> Miasto:</strong> {{ contact.city or 'Brak' }}</p>
 
@@ -492,6 +511,23 @@
                 </a>
             </p>
             {% endif %}
+
+            <p style="align-items: center; flex-wrap: wrap; gap: 8px;">
+                <strong><i class="fas fa-compass"></i> Geolokalizacja:</strong>
+                <span id="contact-coords">
+                    {% if contact.latitude and contact.longitude %}
+                        {{ "%.5f"|format(contact.latitude) }}, {{ "%.5f"|format(contact.longitude) }}
+                    {% else %}
+                        Brak (nieprzeliczone)
+                    {% endif %}
+                </span>
+                <form id="regeocode-form" action="{{ url_for('contacts.regeocode_contact', contact_id=contact.id) }}" method="POST" style="display:inline-block; margin:0;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="button-secondary btn-regeocode" style="padding: 4px 10px; font-size: 0.8rem;" title="Ponownie przelicz geolokalizację">
+                        <i class="fas fa-sync-alt"></i> Przelicz
+                    </button>
+                </form>
+            </p>
 
             <p><strong><i class="fas fa-map-marker-alt"></i> Województwo:</strong> {{ contact.voivodeship or 'Brak' }}</p>
             <p>
@@ -678,6 +714,39 @@ document.addEventListener('DOMContentLoaded', function() {
             } else {
                 localStorage.setItem('crm_dark_theme', 'disabled');
             }
+        });
+    }
+
+    // Handling Regeocode form
+    const regeocodeForm = document.getElementById('regeocode-form');
+    if (regeocodeForm) {
+        regeocodeForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            showSpinner();
+            fetch(regeocodeForm.action, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                }
+            })
+            .then(res => res.json())
+            .then(data => {
+                hideSpinner();
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    const coordsSpan = document.getElementById('contact-coords');
+                    if (coordsSpan && data.latitude !== null && data.longitude !== null) {
+                        coordsSpan.innerText = `${parseFloat(data.latitude).toFixed(5)}, ${parseFloat(data.longitude).toFixed(5)}`;
+                    }
+                } else {
+                    showToast(data.message || 'Nie udało się ustalić geolokalizacji.', 'warning');
+                }
+            })
+            .catch(() => {
+                hideSpinner();
+                showToast('Błąd komunikacji z serwerem.', 'danger');
+            });
         });
     }
 
