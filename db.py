@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import re
+import time
 from datetime import datetime, timezone
 from flask import current_app
 
@@ -12,10 +13,12 @@ def check_and_recover_db(db_path):
     is_corrupted = False
     try:
         conn = sqlite3.connect(db_path, timeout=5.0)
-        res = conn.execute("PRAGMA quick_check;").fetchone()
-        conn.close()
-        if not res or res[0] != 'ok':
-            is_corrupted = True
+        try:
+            res = conn.execute("PRAGMA quick_check;").fetchone()
+            if not res or res[0] != 'ok':
+                is_corrupted = True
+        finally:
+            conn.close()
     except (sqlite3.DatabaseError, sqlite3.OperationalError):
         is_corrupted = True
     except Exception:
@@ -24,19 +27,24 @@ def check_and_recover_db(db_path):
     if is_corrupted:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_path = f"{db_path}.corrupted_{timestamp}"
-        try:
-            if os.path.exists(db_path):
-                os.rename(db_path, backup_path)
-            # Usuń również ewentualne pliki -wal i -shm jeśli istnieją
-            for ext in ['-wal', '-shm']:
-                f = db_path + ext
-                if os.path.exists(f):
+
+        # Usuń ewentualne pliki -wal i -shm
+        for ext in ['', '-wal', '-shm']:
+            f = db_path + ext if ext else db_path
+            if os.path.exists(f):
+                if ext == '':
+                    try:
+                        os.rename(f, backup_path)
+                    except Exception:
+                        try:
+                            os.remove(f)
+                        except Exception:
+                            pass
+                else:
                     try:
                         os.remove(f)
                     except Exception:
                         pass
-        except Exception:
-            pass
 
 def _create_raw_conn(db_path):
     conn = sqlite3.connect(db_path, timeout=30.0)
@@ -51,6 +59,7 @@ def _create_raw_conn(db_path):
 
 def get_db_conn():
     db_path = current_app.config['DATABASE_PATH']
+    conn = None
     try:
         conn = _create_raw_conn(db_path)
         conn.execute("SELECT 1 FROM contacts LIMIT 1;")
@@ -58,24 +67,36 @@ def get_db_conn():
     except sqlite3.OperationalError as e:
         if "no such table: contacts" in str(e):
             return conn
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
         raise e
     except sqlite3.DatabaseError as e:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
         err_msg = str(e).lower()
         if "malformed" in err_msg or "disk image" in err_msg or "not a database" in err_msg:
             check_and_recover_db(db_path)
-            conn = _create_raw_conn(db_path)
-            init_db_schema(conn)
-            return conn
+            new_conn = _create_raw_conn(db_path)
+            init_db_schema(new_conn)
+            return new_conn
         raise e
 
 def init_db_schema(conn):
     cursor = conn.cursor()
     cursor.execute('DROP TABLE IF EXISTS sales_history;')
     cursor.execute('DROP TABLE IF EXISTS contact_history;')
+    cursor.execute('DROP TABLE IF EXISTS delegation_stops;')
+    cursor.execute('DROP TABLE IF EXISTS delegations;')
     cursor.execute('DROP TABLE IF EXISTS contacts;')
 
     cursor.execute('''
-        CREATE TABLE contacts (
+        CREATE TABLE IF NOT EXISTS contacts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             street TEXT,
@@ -95,7 +116,7 @@ def init_db_schema(conn):
         )''')
 
     cursor.execute('''
-        CREATE TABLE contact_history (
+        CREATE TABLE IF NOT EXISTS contact_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             contact_id INTEGER NOT NULL,
             change_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -104,7 +125,7 @@ def init_db_schema(conn):
         )''')
 
     cursor.execute('''
-        CREATE TABLE sales_history (
+        CREATE TABLE IF NOT EXISTS sales_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             contact_id INTEGER NOT NULL,
             product_name TEXT NOT NULL,
